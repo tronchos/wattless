@@ -204,6 +204,7 @@ export function ScanWorkbench() {
                      <VampireList
                        elements={report.vampire_elements}
                        selectedElementID={selectedElementID}
+                       capturedHeight={report.screenshot.captured_height}
                        onSelect={setSelectedElementID}
                      />
                    </div>

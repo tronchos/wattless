@@ -73,6 +73,18 @@ export interface PerformanceMetrics {
 
 export interface ScreenshotPayload {
   mime_type: string;
+  strategy: "single" | "tiled";
+  viewport_width: number;
+  viewport_height: number;
+  document_width: number;
+  document_height: number;
+  captured_height: number;
+  tiles: ScreenshotTile[];
+}
+
+export interface ScreenshotTile {
+  id: string;
+  y: number;
   width: number;
   height: number;
   data_base64: string;

@@ -51,11 +51,23 @@ type PerformanceMetrics struct {
 	FCPMS              int64 `json:"fcp_ms"`
 }
 
-type Screenshot struct {
-	MimeType   string `json:"mime_type"`
+type ScreenshotTile struct {
+	ID         string `json:"id"`
+	Y          int    `json:"y"`
 	Width      int    `json:"width"`
 	Height     int    `json:"height"`
 	DataBase64 string `json:"data_base64"`
+}
+
+type Screenshot struct {
+	MimeType       string           `json:"mime_type"`
+	Strategy       string           `json:"strategy"`
+	ViewportWidth  int              `json:"viewport_width"`
+	ViewportHeight int              `json:"viewport_height"`
+	DocumentWidth  int              `json:"document_width"`
+	DocumentHeight int              `json:"document_height"`
+	CapturedHeight int              `json:"captured_height"`
+	Tiles          []ScreenshotTile `json:"tiles"`
 }
 
 type Meta struct {

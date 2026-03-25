@@ -20,6 +20,7 @@ export function createMarkdownReport(
     `- LCP: ${formatMilliseconds(report.performance.lcp_ms)}`,
     `- FCP: ${formatMilliseconds(report.performance.fcp_ms)}`,
     `- Load: ${formatMilliseconds(report.performance.load_ms)}`,
+    `- Inspector coverage: ${formatInspectorCoverage(report)}`,
     `- Hosting: ${report.hosting_verdict}${report.hosted_by ? ` (${report.hosted_by})` : ""}`,
     `- Generado: ${report.meta.generated_at}`,
     `- Duración del escaneo: ${formatMilliseconds(report.meta.scan_duration_ms)}`,
@@ -70,4 +71,13 @@ export function createMarkdownReport(
   }
 
   return lines.join("\n");
+}
+
+function formatInspectorCoverage(report: ScanReport): string {
+  const { captured_height, document_height } = report.screenshot;
+  if (captured_height >= document_height) {
+    return `${captured_height} / ${document_height} px`;
+  }
+
+  return `${captured_height} / ${document_height} px (truncated)`;
 }

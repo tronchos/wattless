@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -174,7 +175,6 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 	return report, nil
 }
 
-
 type enrichedResource struct {
 	ID            string
 	URL           string
@@ -187,6 +187,31 @@ type enrichedResource struct {
 	Failed        bool
 	FailureReason string
 	BoundingBox   *BoundingBox
+}
+
+type documentMetrics struct {
+	ViewportWidth  int
+	ViewportHeight int
+	DocumentWidth  int
+	DocumentHeight int
+}
+
+type screenshotTilePlan struct {
+	ID     string
+	Y      int
+	Width  int
+	Height int
+}
+
+type screenshotPlan struct {
+	Strategy       string
+	ViewportWidth  int
+	ViewportHeight int
+	DocumentWidth  int
+	DocumentHeight int
+	CapturedHeight int
+	Tiles          []screenshotTilePlan
+	Truncated      bool
 }
 
 func (s *Service) resolveHosting(ctx context.Context, hostname string) (hosting.Result, []string) {
@@ -320,31 +345,48 @@ func (s *Service) runBrowserScan(ctx context.Context, targetURL string) ([]enric
 		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
 	}
 
+	mu.Lock()
+	baselineResources := snapshotRawResources(resources)
+	mu.Unlock()
+
+	metrics, err := measureDocument(page, s.cfg)
+	if err != nil {
+		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+	}
+
+	warnings := make([]string, 0, 3)
+	primingWarnings, err := primeScrollableContent(deadlineCtx, page, metrics, s.cfg)
+	if err != nil {
+		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+	}
+	warnings = append(warnings, primingWarnings...)
+
+	metrics, err = measureDocument(page, s.cfg)
+	if err != nil {
+		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+	}
+
+	if err := scrollToTop(page); err != nil {
+		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+	}
+
 	elements, err := collectElementBoxes(page)
 	if err != nil {
 		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
 	}
 
-	screenshotBytes, err := page.Screenshot(false, &proto.PageCaptureScreenshot{
-		Format:  proto.PageCaptureScreenshotFormatWebp,
-		Quality: intPtr(85),
-	})
+	plan := buildScreenshotPlan(metrics, s.cfg)
+	screenshot, err := captureDocumentScreenshot(page, plan, s.cfg.FullPageCaptureQuality)
 	if err != nil {
 		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
 	}
-
-	screenshot := Screenshot{
-		MimeType:   "image/webp",
-		Width:      s.cfg.ViewportWidth,
-		Height:     s.cfg.ViewportHeight,
-		DataBase64: base64.StdEncoding.EncodeToString(screenshotBytes),
+	if plan.Truncated {
+		warnings = append(warnings, fmt.Sprintf("Visual inspector capture truncated at %dpx for efficiency.", plan.CapturedHeight))
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	enriched := make([]enrichedResource, 0, len(resources))
-	for _, resource := range resources {
+	enriched := make([]enrichedResource, 0, len(baselineResources))
+	anchorsOutsideCapturedRange := false
+	for _, resource := range baselineResources {
 		if resource.URL == "" {
 			continue
 		}
@@ -364,9 +406,17 @@ func (s *Service) runBrowserScan(ctx context.Context, targetURL string) ([]enric
 			FailureReason: resource.FailureReason,
 			BoundingBox:   matchBoundingBox(resource.URL, elements),
 		})
+		box := enriched[len(enriched)-1].BoundingBox
+		if box != nil && box.Y >= float64(plan.CapturedHeight) {
+			anchorsOutsideCapturedRange = true
+		}
 	}
 
-	return enriched, performanceMetrics, screenshot, []string{}, nil
+	if anchorsOutsideCapturedRange {
+		warnings = append(warnings, "Some visual anchors are below the captured range.")
+	}
+
+	return enriched, performanceMetrics, screenshot, warnings, nil
 }
 
 func (s *Service) launchBrowser() (string, func(), error) {
@@ -475,6 +525,178 @@ func defaultMethodology() Methodology {
 	}
 }
 
+func measureDocument(page *rod.Page, cfg config.Config) (documentMetrics, error) {
+	metrics, err := (proto.PageGetLayoutMetrics{}).Call(page)
+	if err != nil {
+		return documentMetrics{}, err
+	}
+	if metrics.CSSContentSize == nil || metrics.CSSLayoutViewport == nil {
+		return documentMetrics{}, fmt.Errorf("failed to measure document layout")
+	}
+
+	contentWidth := int(math.Ceil(metrics.CSSContentSize.Width))
+	contentHeight := int(math.Ceil(metrics.CSSContentSize.Height))
+	layoutWidth := metrics.CSSLayoutViewport.ClientWidth
+	layoutHeight := metrics.CSSLayoutViewport.ClientHeight
+
+	documentWidth := maxInt(layoutWidth, minInt(contentWidth, cfg.ViewportWidth))
+	documentHeight := maxInt(contentHeight, cfg.ViewportHeight)
+
+	return documentMetrics{
+		ViewportWidth:  maxInt(cfg.ViewportWidth, layoutWidth),
+		ViewportHeight: maxInt(cfg.ViewportHeight, layoutHeight),
+		DocumentWidth:  maxInt(documentWidth, 1),
+		DocumentHeight: maxInt(documentHeight, 1),
+	}, nil
+}
+
+func primeScrollableContent(ctx context.Context, page *rod.Page, metrics documentMetrics, cfg config.Config) ([]string, error) {
+	if metrics.DocumentHeight <= metrics.ViewportHeight {
+		return nil, nil
+	}
+
+	step := maxInt(int(math.Round(float64(metrics.ViewportHeight)*0.75)), 1)
+	maxHeight := minInt(metrics.DocumentHeight, cfg.FullPageMaxHeight)
+	deadline := time.Now().Add(cfg.FullPagePrimeMaxDuration)
+	partial := false
+
+	for y := step; y < maxHeight; y += step {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if time.Now().After(deadline) {
+			partial = true
+			break
+		}
+
+		if err := scrollTo(page, y); err != nil {
+			return nil, err
+		}
+		if err := sleepWithContext(ctx, 150*time.Millisecond); err != nil {
+			return nil, err
+		}
+
+		refreshed, err := measureDocument(page, cfg)
+		if err == nil {
+			metrics = refreshed
+			maxHeight = minInt(metrics.DocumentHeight, cfg.FullPageMaxHeight)
+		}
+	}
+
+	if err := scrollToTop(page); err != nil {
+		return nil, err
+	}
+	if err := sleepWithContext(ctx, 300*time.Millisecond); err != nil {
+		return nil, err
+	}
+
+	if partial {
+		return []string{"Lazy content was partially hydrated before capture."}, nil
+	}
+	return nil, nil
+}
+
+func buildScreenshotPlan(metrics documentMetrics, cfg config.Config) screenshotPlan {
+	capturedHeight := minInt(metrics.DocumentHeight, cfg.FullPageMaxHeight)
+	if capturedHeight <= 0 {
+		capturedHeight = metrics.ViewportHeight
+	}
+
+	strategy := "single"
+	tileHeight := capturedHeight
+	if capturedHeight > cfg.FullPageSingleShotThreshold {
+		strategy = "tiled"
+		tileHeight = maxInt(cfg.FullPageTileHeight, 1)
+	}
+
+	tiles := make([]screenshotTilePlan, 0, maxInt(1, int(math.Ceil(float64(capturedHeight)/float64(maxInt(tileHeight, 1))))))
+	for y := 0; y < capturedHeight; y += tileHeight {
+		height := minInt(tileHeight, capturedHeight-y)
+		tiles = append(tiles, screenshotTilePlan{
+			ID:     fmt.Sprintf("tile-%d", len(tiles)),
+			Y:      y,
+			Width:  metrics.DocumentWidth,
+			Height: height,
+		})
+	}
+
+	return screenshotPlan{
+		Strategy:       strategy,
+		ViewportWidth:  metrics.ViewportWidth,
+		ViewportHeight: metrics.ViewportHeight,
+		DocumentWidth:  metrics.DocumentWidth,
+		DocumentHeight: metrics.DocumentHeight,
+		CapturedHeight: capturedHeight,
+		Tiles:          tiles,
+		Truncated:      metrics.DocumentHeight > capturedHeight,
+	}
+}
+
+func captureDocumentScreenshot(page *rod.Page, plan screenshotPlan, quality int) (Screenshot, error) {
+	tiles := make([]ScreenshotTile, 0, len(plan.Tiles))
+	for _, tilePlan := range plan.Tiles {
+		tile, err := captureScreenshotTile(page, tilePlan, quality)
+		if err != nil {
+			return Screenshot{}, err
+		}
+		tiles = append(tiles, tile)
+	}
+
+	return Screenshot{
+		MimeType:       "image/webp",
+		Strategy:       plan.Strategy,
+		ViewportWidth:  plan.ViewportWidth,
+		ViewportHeight: plan.ViewportHeight,
+		DocumentWidth:  plan.DocumentWidth,
+		DocumentHeight: plan.DocumentHeight,
+		CapturedHeight: plan.CapturedHeight,
+		Tiles:          tiles,
+	}, nil
+}
+
+func captureScreenshotTile(page *rod.Page, tile screenshotTilePlan, quality int) (ScreenshotTile, error) {
+	req := proto.PageCaptureScreenshot{
+		Format:                proto.PageCaptureScreenshotFormatWebp,
+		Quality:               intPtr(quality),
+		Clip:                  &proto.PageViewport{X: 0, Y: float64(tile.Y), Width: float64(tile.Width), Height: float64(tile.Height), Scale: 1},
+		CaptureBeyondViewport: true,
+	}
+
+	result, err := req.Call(page)
+	if err != nil {
+		return ScreenshotTile{}, err
+	}
+
+	return ScreenshotTile{
+		ID:         tile.ID,
+		Y:          tile.Y,
+		Width:      tile.Width,
+		Height:     tile.Height,
+		DataBase64: encodeScreenshotBytes(result.Data),
+	}, nil
+}
+
+func scrollToTop(page *rod.Page) error {
+	return scrollTo(page, 0)
+}
+
+func scrollTo(page *rod.Page, y int) error {
+	_, err := page.Evaluate(rod.Eval(`targetY => {
+		window.scrollTo(0, targetY);
+		return window.scrollY || document.documentElement.scrollTop || 0;
+	}`, y))
+	return err
+}
+
+func sleepWithContext(ctx context.Context, wait time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(wait):
+		return nil
+	}
+}
+
 func collectElementBoxes(page *rod.Page) ([]domElement, error) {
 	result, err := page.Evaluate(rod.Eval(`() => {
 		const seen = new Map();
@@ -487,8 +709,8 @@ func collectElementBoxes(page *rod.Page) ([]domElement, error) {
 				if (!seen.has(url)) {
 					seen.set(url, {
 						url,
-						x: Math.round(rect.x),
-						y: Math.round(rect.y),
+						x: Math.round(rect.left + window.scrollX),
+						y: Math.round(rect.top + window.scrollY),
 						width: Math.round(rect.width),
 						height: Math.round(rect.height)
 					});
@@ -540,6 +762,35 @@ func stripURLNoise(value string) string {
 
 func intPtr(value int) *int {
 	return &value
+}
+
+func encodeScreenshotBytes(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
+}
+
+func snapshotRawResources(resources map[string]*rawResource) []rawResource {
+	snapshot := make([]rawResource, 0, len(resources))
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+		snapshot = append(snapshot, *resource)
+	}
+	return snapshot
+}
+
+func minInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func makeInsightResources(resources []ResourceSummary) []insights.ResourceContext {

@@ -7,12 +7,14 @@ import type { VampireElement } from "@/lib/types";
 interface VampireListProps {
   elements: VampireElement[];
   selectedElementID: string | null;
+  capturedHeight: number;
   onSelect: (id: string) => void;
 }
 
 export function VampireList({
   elements,
   selectedElementID,
+  capturedHeight,
   onSelect,
 }: VampireListProps) {
   const selectedElement =
@@ -34,6 +36,7 @@ export function VampireList({
           <tbody className="divide-y divide-outline-variant/10 block md:table-row-group">
             {elements.map((element) => {
               const isActive = selectedElement?.id === element.id;
+              const coverage = getCoverageState(element, capturedHeight);
               
               // Impact styling logic based on estimated savings or type
               let impactLevel: "HIGH" | "MED" | "LOW" = "LOW";
@@ -54,8 +57,11 @@ export function VampireList({
                     <div className="text-on-surface truncate max-w-[150px] sm:max-w-[200px]" title={element.url}>
                        {element.url.split('/').pop() || formatResourceLabel(element.type)}
                     </div>
-                    <div className="text-[10px] text-on-surface-variant mt-1">
-                       {formatResourceLabel(element.type)}
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-on-surface-variant">
+                       <span>{formatResourceLabel(element.type)}</span>
+                       <span className={`rounded-full px-2 py-0.5 font-label font-bold ${coverage.className}`}>
+                         {coverage.label}
+                       </span>
                     </div>
                   </td>
                   <td className="px-4 py-4 opacity-70 block md:table-cell">
@@ -80,4 +86,25 @@ export function VampireList({
       </div>
     </div>
   );
+}
+
+function getCoverageState(element: VampireElement, capturedHeight: number) {
+  if (!element.bounding_box) {
+    return {
+      label: "No visual anchor",
+      className: "bg-surface-container-highest text-on-surface-variant",
+    };
+  }
+
+  if (element.bounding_box.y >= capturedHeight) {
+    return {
+      label: "Outside captured range",
+      className: "bg-secondary-container text-on-surface",
+    };
+  }
+
+  return {
+    label: "Visible in inspector",
+    className: "bg-primary/10 text-primary",
+  };
 }
