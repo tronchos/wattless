@@ -19,9 +19,7 @@ services:
       context: ..
       dockerfile: docker/client.Dockerfile
     environment:
-      APP_BASE_URL: http://localhost:${CLIENT_PORT:-3000}
       SCANNER_API_URL: http://server:8080
-      SCANNER_SELF_BASE_URL: http://client:3000
     ports:
       - "${CLIENT_PORT:-3000}:3000"
     volumes:

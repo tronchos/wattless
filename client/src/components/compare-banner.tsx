@@ -29,8 +29,8 @@ export function CompareBanner({ current, previous }: CompareBannerProps) {
           </h3>
         </div>
         <p className="max-w-xl text-sm leading-6 text-[var(--muted)]">
-          Ideal para enseñar antes/después durante la demo o justificar una
-          mejora rápida en un README o PR.
+          Útil para validar una mejora entre dos escaneos y documentar el
+          impacto antes de abrir un PR o actualizar un README técnico.
         </p>
       </div>
 

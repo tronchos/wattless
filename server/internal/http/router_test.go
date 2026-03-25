@@ -65,6 +65,18 @@ func TestGreenFixReturnsBadRequestForMissingCode(t *testing.T) {
 	}
 }
 
+func TestGreenFixReturnsBadRequestForShortCode(t *testing.T) {
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000", RequestTimeout: time.Second}, stubScanner{}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/v1/green-fix", bytes.NewBufferString(`{"framework":"next","language":"tsx","code":"const x = 1;"}`))
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", recorder.Code)
+	}
+}
+
 func TestGreenFixReturnsResult(t *testing.T) {
 	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000", RequestTimeout: time.Second}, stubScanner{
 		refactorResult: insights.RefactorResult{
@@ -73,7 +85,7 @@ func TestGreenFixReturnsResult(t *testing.T) {
 			OptimizedCode: "export function Hero() {}",
 		},
 	}, slog.Default())
-	req := httptest.NewRequest(nethttp.MethodPost, "/api/v1/green-fix", bytes.NewBufferString(`{"framework":"next","language":"tsx","code":"const a = 1"}`))
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/v1/green-fix", bytes.NewBufferString(`{"framework":"next","language":"tsx","code":"export function Hero(){ return <section>hola</section>; }"}`))
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, req)

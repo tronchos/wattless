@@ -15,16 +15,15 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
-import { startTransition, useState, type FormEvent } from "react";
+import { startTransition, useEffect, useState, type FormEvent } from "react";
 
 import {
   formatBytes,
   formatGrams,
   formatMilliseconds,
-  scanURL,
   generateGreenFix,
+  scanURL,
 } from "@/lib/api";
-import { demoSnippet } from "@/lib/demo-snippet";
 import type {
   GreenFixResponse,
   ScanReport,
@@ -35,16 +34,19 @@ import { CompareBanner } from "@/components/compare-banner";
 import { GreenFixStudio } from "@/components/green-fix-studio";
 import { InsightsPanel } from "@/components/insights-panel";
 import { MarkdownReportCard } from "@/components/markdown-report-card";
+import { MethodologyCard } from "@/components/methodology-card";
 import { MetricCard } from "@/components/metric-card";
 import { ScoreRing } from "@/components/score-ring";
 import { ScreenshotInspector } from "@/components/screenshot-inspector";
 import { VampireList } from "@/components/vampire-list";
 
 const sampleURL = "https://example.com";
-const showcaseRoutes = [
-  { label: "Demo heavy", path: "/showcase/heavy" },
-  { label: "Demo wattless", path: "/showcase/wattless" },
+const scanProgressLabels = [
+  "Midiendo transferencia de red",
+  "Estimando coste energético",
+  "Identificando carga crítica del LCP",
 ];
+const minimumGreenFixCodeLength = 20;
 
 export function ScanWorkbench() {
   const [inputURL, setInputURL] = useState(sampleURL);
@@ -53,12 +55,26 @@ export function ScanWorkbench() {
   const [selectedElementID, setSelectedElementID] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [greenFixCode, setGreenFixCode] = useState(demoSnippet);
+  const [scanProgressIndex, setScanProgressIndex] = useState(0);
+  const [greenFixCode, setGreenFixCode] = useState("");
   const [isGeneratingFix, setIsGeneratingFix] = useState(false);
   const [greenFixResult, setGreenFixResult] = useState<GreenFixResponse | null>(null);
 
   const selectedElement =
     report?.vampire_elements.find((element) => element.id === selectedElementID) ?? null;
+
+  useEffect(() => {
+    if (!isScanning) {
+      setScanProgressIndex(0);
+      return;
+    }
+
+    const intervalID = window.setInterval(() => {
+      setScanProgressIndex((current) => (current + 1) % scanProgressLabels.length);
+    }, 1200);
+
+    return () => window.clearInterval(intervalID);
+  }, [isScanning]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,6 +113,12 @@ export function ScanWorkbench() {
       return;
     }
 
+    const trimmedCode = greenFixCode.trim();
+    if (trimmedCode.length < minimumGreenFixCodeLength) {
+      setError("Pega al menos 20 caracteres de código para generar un Green Fix útil.");
+      return;
+    }
+
     setIsGeneratingFix(true);
     setError(null);
 
@@ -104,7 +126,7 @@ export function ScanWorkbench() {
       const response = await generateGreenFix({
         framework: "next",
         language: "tsx",
-        code: greenFixCode,
+        code: trimmedCode,
         related_resource_id:
           report.insights.top_actions[0]?.related_resource_id ??
           selectedElement?.id,
@@ -129,14 +151,6 @@ export function ScanWorkbench() {
     }
   }
 
-  function setShowcaseRoute(path: string) {
-    const value =
-      typeof window === "undefined"
-        ? path
-        : new URL(path, window.location.origin).toString();
-    setInputURL(value);
-  }
-
   return (
     <LazyMotion features={domAnimation}>
       <section className="space-y-6">
@@ -153,7 +167,9 @@ export function ScanWorkbench() {
                   </h2>
                 </div>
                 <div className="mono text-xs uppercase tracking-[0.22em] text-[var(--muted)]">
-                  {isScanning ? "Analizando en vivo..." : "Listo para demo"}
+                  {isScanning
+                    ? scanProgressLabels[scanProgressIndex]
+                    : "Listo para analizar"}
                 </div>
               </div>
 
@@ -202,16 +218,6 @@ export function ScanWorkbench() {
                 >
                   Usar ejemplo
                 </button>
-                {showcaseRoutes.map((route) => (
-                  <button
-                    key={route.path}
-                    type="button"
-                    onClick={() => setShowcaseRoute(route.path)}
-                    className="mono rounded-full border border-[var(--line)] px-3 py-1 text-xs uppercase tracking-[0.22em] text-[var(--muted)] transition hover:border-[var(--line-strong)] hover:text-white"
-                  >
-                    {route.label}
-                  </button>
-                ))}
                 {error ? (
                   <span className="rounded-full border border-[rgba(255,126,107,0.3)] bg-[rgba(255,126,107,0.08)] px-3 py-1 text-sm text-[var(--danger)]">
                     {error}
@@ -222,29 +228,29 @@ export function ScanWorkbench() {
 
             <div className="rounded-[1.7rem] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-5">
               <p className="mono text-xs uppercase tracking-[0.22em] text-[var(--accent)]">
-                Guion de demo
+                Qué mide Wattless
               </p>
               <div className="mt-4 space-y-3 text-sm leading-7 text-[var(--muted)]">
-                <p>1. Escanea una URL y muestra el coste invisible.</p>
-                <p>2. Conecta bytes, CO2 y Largest Contentful Paint.</p>
-                <p>3. Genera un Green Fix creíble para el fragmento crítico.</p>
-                <p>4. Exporta el resultado como Markdown listo para compartir.</p>
+                <p>1. Transferencia real observada durante el runtime.</p>
+                <p>2. CO2 estimado por visita con metodología explícita.</p>
+                <p>3. Core Web Vitals del render principal: LCP y FCP.</p>
+                <p>4. Recursos dominantes, terceros y acciones prioritarias.</p>
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl border border-[var(--line)] bg-[var(--panel-muted)] p-4">
                   <div className="mono text-xs uppercase tracking-[0.22em] text-[var(--muted)]">
-                    Escaneo
+                    Método
                   </div>
                   <div className="mt-2 text-lg text-white">
-                    En vivo + síncrono
+                    Runtime + Sustainable Web Design
                   </div>
                 </div>
                 <div className="rounded-2xl border border-[var(--line)] bg-[var(--panel-muted)] p-4">
                   <div className="mono text-xs uppercase tracking-[0.22em] text-[var(--muted)]">
-                    IA
+                    Entrega
                   </div>
                   <div className="mt-2 text-lg text-white">
-                    Resumen + refactor demo
+                    Informe técnico listo para compartir
                   </div>
                 </div>
               </div>
@@ -360,6 +366,8 @@ export function ScanWorkbench() {
                     grams={formatGrams(report.co2_grams_per_visit)}
                   />
 
+                  <MethodologyCard report={report} />
+
                   <section className="panel rounded-[2rem] p-6">
                     <p className="mono text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
                       Contexto del escaneo
@@ -422,7 +430,6 @@ export function ScanWorkbench() {
                 report={report}
                 code={greenFixCode}
                 onCodeChange={setGreenFixCode}
-                onUseDemoSnippet={() => setGreenFixCode(demoSnippet)}
                 onGenerate={handleGenerateGreenFix}
                 isGenerating={isGeneratingFix}
                 result={greenFixResult}
@@ -443,13 +450,13 @@ export function ScanWorkbench() {
               </p>
               <h3 className="mt-4 text-3xl font-medium tracking-[-0.05em] text-white">
                 {isScanning
-                  ? "Capturando tráfico, métricas y elementos vampiro..."
+                  ? scanProgressLabels[scanProgressIndex]
                   : "Ejecuta el primer análisis para poblar el dashboard."}
               </h3>
               <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-[var(--muted)]">
                 {isScanning
                   ? "Wattless está calculando CO2 por visita, LCP, FCP, hosting y las oportunidades de optimización más visibles."
-                  : "El informe combina score, bytes, Core Web Vitals, screenshot, hosting, insights IA y un Green Fix listo para demo."}
+                  : "El informe combina score, bytes, Core Web Vitals, screenshot, hosting, metodología explícita, insights IA y un Green Fix orientado a código real."}
               </p>
             </m.section>
           )}

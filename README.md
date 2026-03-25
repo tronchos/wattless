@@ -1,33 +1,120 @@
 # Wattless
 
-Wattless es una demo de hackatón centrada en sostenibilidad web, rendimiento e IA. Combina un escáner en Go con `rod`, un BFF en Next.js y un dashboard pensado para explicar en segundos la relación entre `bytes + CO2 + LCP`.
+> Wattless no es solo un auditor; es un reductor de entropía digital. Aplicamos los principios de la termodinámica al desarrollo web para que el software deje de calentar el planeta innecesariamente.
 
-## Qué hace
+Wattless es una auditoría web de sostenibilidad y rendimiento construida para la Hackatón CubePath 2026. Escanea una URL real, mide transferencia, `CO2` por visita, `LCP`, `FCP`, dependencia de terceros y hosting verde, y devuelve un informe técnico con recomendaciones accionables y un `Green Fix` orientado a código real.
 
-- Escanea una URL real y calcula `score`, transferencia y `CO2` por visita.
-- Mide `LCP`, `FCP`, `load` y actividad de scripts.
-- Revisa hosting verde con The Green Web Foundation.
-- Destaca los 5 elementos vampiro sobre una captura interactiva.
-- Genera `insights IA` con fallback a reglas.
-- Produce un `Green Fix` demoable para un snippet de React/Next.js.
-- Exporta un `Markdown report` listo para README o PR.
-- Incluye showcase controlado en `/showcase/heavy` y `/showcase/wattless`.
+## Qué problema resuelve
 
-## Estructura
+La web tiene un coste invisible. Cada recurso pesado, cada script bloqueante y cada tercero innecesario aumentan la transferencia, empeoran la experiencia y convierten energía útil en calor residual en servidores y dispositivos.
 
-- `client/`: frontend Next.js App Router y BFF same-origin.
-- `server/`: API Go, scanner, cálculo de CO2 e integración de IA.
-- `docker/`: contenedores de desarrollo y producción.
-- `PROJECT.md`: documento original del proyecto.
+Wattless convierte ese coste invisible en un informe claro:
+
+- bytes transferidos en runtime
+- `CO2` estimado por visita
+- `LCP`, `FCP`, `load` y tiempo de scripts
+- recursos dominantes y ahorro potencial
+- resumen IA y refactor guiado para un snippet real
+
+## Demo pública
+
+- URL de producción en CubePath: `pendiente de publicar antes de la entrega final`
+- Repo público: `https://github.com/tronchos/wattless`
+
+## Capturas y GIFs
+
+- Captura actual del dashboard: [`docs/media/wattless-dashboard.webp`](docs/media/wattless-dashboard.webp)
+- Reporte JSON usado para esa captura: [`docs/media/wattless-dashboard-report.json`](docs/media/wattless-dashboard-report.json)
+- Material de la demo: `docs/media/`
+- Guion del pitch: [`docs/pitch.md`](docs/pitch.md)
+
+![Dashboard actual de Wattless](docs/media/wattless-dashboard.webp)
+
+## Cómo funciona
+
+1. El frontend de Next.js envía la URL al BFF same-origin.
+2. El backend en Go lanza Chromium con `rod` y captura tráfico de red, rendimiento y screenshot.
+3. Wattless calcula `CO2` por visita usando la fórmula base de Sustainable Web Design.
+4. Se consulta Greencheck para validar si el hosting es verde.
+5. Se priorizan los recursos más costosos y se generan insights IA con fallback heurístico.
+6. El usuario puede pegar un snippet real y obtener un `Green Fix` listo para revisar.
+
+## Arquitectura del monorepo
+
+- `client/`: Next.js App Router, dashboard, BFF y exportación de Markdown.
+- `server/`: API Go, scanner con `rod`, cálculo de CO2, hosting check e insights.
+- `docker/`: desarrollo local y despliegue de producción para CubePath.
+
+## Metodología del cálculo
+
+Wattless usa la aproximación base de Sustainable Web Design para traducir transferencia en impacto por visita:
+
+```text
+(bytes / 1_000_000_000) * 0.8 * 0.75 * 442
+```
+
+Supuestos explícitos del MVP:
+
+- `0.8 kWh / GB` de transferencia
+- `0.75` como factor de retorno/visitas repetidas
+- `442 gCO2e / kWh` como promedio global
+
+Además del CO2, el informe incorpora `LCP`, `FCP` y tiempo de scripts para conectar sostenibilidad con experiencia de usuario.
+
+## Cómo usamos CubePath
+
+CubePath es el destino de despliegue de producción del proyecto:
+
+- `client` se expone públicamente desde CubePath
+- `server` queda en red interna privada
+- el frontend consume el backend a través del BFF de Next
+- la topología está pensada para ejecutarse con contenedores separados y healthchecks
+
+Archivos relevantes:
+
+- `docker/client.prod.Dockerfile`
+- `docker/server.prod.Dockerfile`
+- `docker/compose.prod.yml`
+
+## Endpoints principales
+
+### Backend Go
+
+- `GET /healthz`
+- `POST /api/v1/scans`
+- `POST /api/v1/green-fix`
+
+### Frontend Next.js
+
+- `GET /api/healthz`
+- `POST /api/scan`
+- `POST /api/green-fix`
 
 ## Desarrollo local
 
-1. `make install`
-2. `make server-dev`
-3. `make client-dev`
-4. `make dev` para levantar el stack Docker de desarrollo
+### Requisitos
 
-### Variables del servidor
+- Go `1.24+`
+- Node.js `20+`
+- Docker y Docker Compose para validar el stack de producción local
+
+### Arranque rápido
+
+```bash
+make install
+make server-dev
+make client-dev
+```
+
+### Validación con Docker
+
+```bash
+docker compose -f docker/compose.prod.yml up --build
+```
+
+### Variables principales
+
+#### Backend
 
 - `PORT` default `8080`
 - `CLIENT_ORIGIN` default `http://localhost:3000`
@@ -43,44 +130,20 @@ Wattless es una demo de hackatón centrada en sostenibilidad web, rendimiento e 
 - `GEMINI_MODEL` default `gemini-2.0-flash`
 - `LLM_TIMEOUT` default `12s`
 
-### Variables del cliente
+#### Frontend
 
-- `SCANNER_API_URL` URL interna usada por el BFF de Next. En desarrollo, si falta, usa `http://localhost:8080`
-- `SCANNER_SELF_BASE_URL` URL interna opcional para reescribir scans de la propia app cuando el origen público coincide exactamente (`scheme + host + port`)
-- `APP_BASE_URL` URL pública de la app, usada también para resolver scans same-origin detrás de proxy
+- `SCANNER_API_URL` backend interno consumido por el BFF
 
-## Endpoints principales
+## Limitaciones reales
 
-- `GET /healthz` en Go
-- `POST /api/v1/scans` en Go
-- `POST /api/v1/green-fix` en Go
-- `POST /api/scan` en Next
-- `POST /api/green-fix` en Next
-- `GET /api/healthz` en Next
+- El cálculo de `CO2` es una estimación basada en transferencia, no una medición eléctrica directa.
+- El `Green Fix` trabaja sobre snippets pegados por la persona usuaria; no reconstruye automáticamente el código fuente de un sitio tercero.
+- El veredicto de hosting depende de la disponibilidad de The Green Web Foundation.
+- Algunos recursos no tienen anclaje visual y no pueden resaltarse sobre la captura.
 
-## Producción y Dokploy
+## Roadmap corto post-hackatón
 
-Archivos añadidos:
-
-- `docker/client.prod.Dockerfile`
-- `docker/server.prod.Dockerfile`
-- `docker/compose.prod.yml`
-
-Despliegue esperado:
-
-- `client` público detrás del reverse proxy de Dokploy
-- `server` privado en red interna
-- `SCANNER_API_URL=http://server:8080`
-- `SCANNER_SELF_BASE_URL=http://client:3000` para que el showcase pueda escanear la propia app sin confundir otros servicios del mismo host en puertos distintos
-
-Comando recomendado para validar la topología:
-
-```bash
-docker compose -f docker/compose.prod.yml config
-```
-
-## Notas
-
-- Si Gemini falla o no está configurado, Wattless sigue funcionando con fallback heurístico.
-- Si Greencheck falla, `hosting_verdict` pasa a `unknown` y el informe sigue siendo válido.
-- Los overlays visuales solo aparecen cuando un recurso puede mapearse a un nodo visible del DOM.
+- despliegue público en CubePath con dominio final
+- material visual definitivo en `docs/media/`
+- más contexto de third-party cost y budget por recurso
+- exportación de reportes más orientada a PRs técnicos

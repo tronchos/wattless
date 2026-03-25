@@ -70,6 +70,19 @@ export interface ScreenshotPayload {
   data_base64: string;
 }
 
+export interface ScanMeta {
+  generated_at: string;
+  scan_duration_ms: number;
+  scanner_version: string;
+}
+
+export interface ScanMethodology {
+  model: string;
+  formula: string;
+  source: string;
+  assumptions: string[];
+}
+
 export interface ScanReport {
   url: string;
   score: string;
@@ -85,6 +98,8 @@ export interface ScanReport {
   vampire_elements: VampireElement[];
   performance: PerformanceMetrics;
   screenshot: ScreenshotPayload;
+  meta: ScanMeta;
+  methodology: ScanMethodology;
   warnings: string[];
 }
 

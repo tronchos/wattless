@@ -1,3 +1,5 @@
+import { formatEntropyLabel } from "@/lib/api";
+
 const scoreProgress: Record<string, number> = {
   A: 92,
   B: 78,
@@ -17,6 +19,7 @@ export function ScoreRing({ score, grams }: ScoreRingProps) {
   const radius = 84;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference - (progress / 100) * circumference;
+  const entropyLabel = formatEntropyLabel(score);
 
   return (
     <div className="panel flex flex-col rounded-[2rem] p-6">
@@ -55,13 +58,17 @@ export function ScoreRing({ score, grams }: ScoreRingProps) {
           <div className="text-6xl font-medium tracking-[-0.08em] text-white">
             {score}
           </div>
+          <div className="mono mt-2 text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">
+            {entropyLabel}
+          </div>
           <div className="mono mt-2 text-xs uppercase tracking-[0.22em] text-[var(--accent)]">
             {grams}
           </div>
         </div>
       </div>
       <p className="mt-4 text-center text-sm leading-6 text-[var(--muted)]">
-        Menos transferencia, menos terceros pesados y mejor infraestructura hacen subir la nota.
+        Menos transferencia, menos terceros pesados y mejor infraestructura
+        reducen la entropía digital y hacen subir la nota.
       </p>
     </div>
   );

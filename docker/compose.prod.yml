@@ -32,9 +32,7 @@ services:
       dockerfile: docker/client.prod.Dockerfile
     environment:
       PORT: 3000
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
       SCANNER_API_URL: http://server:8080
-      SCANNER_SELF_BASE_URL: http://client:3000
     depends_on:
       server:
         condition: service_healthy

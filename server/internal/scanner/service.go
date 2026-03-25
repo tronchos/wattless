@@ -32,6 +32,8 @@ type Service struct {
 	logger         *slog.Logger
 }
 
+const scannerVersion = "2026.03"
+
 func NewService(cfg config.Config, hostingChecker HostingChecker, insightsProvider insights.Provider, logger *slog.Logger) *Service {
 	return &Service{
 		cfg:            cfg,
@@ -42,6 +44,8 @@ func NewService(cfg config.Config, hostingChecker HostingChecker, insightsProvid
 }
 
 func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
+	startedAt := time.Now()
+
 	normalizedURL, hostname, err := urlutil.Normalize(rawURL)
 	if err != nil {
 		return Report{}, err
@@ -125,6 +129,7 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 		VampireElements:       vampires,
 		Performance:           perf,
 		Screenshot:            screenshot,
+		Methodology:           defaultMethodology(),
 		Warnings:              warnings,
 	}
 
@@ -160,6 +165,8 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 	} else {
 		report.Insights = insightReport
 	}
+
+	report.Meta = buildMeta(startedAt, time.Now())
 
 	return report, nil
 }
@@ -458,6 +465,26 @@ func performanceObserverScript() string {
 			}).observe({ type: "paint", buffered: true });
 		} catch {}
 	})()`
+}
+
+func buildMeta(startedAt, finishedAt time.Time) Meta {
+	return Meta{
+		GeneratedAt:    finishedAt.UTC().Format(time.RFC3339),
+		ScanDurationMS: finishedAt.Sub(startedAt).Milliseconds(),
+		ScannerVersion: scannerVersion,
+	}
+}
+
+func defaultMethodology() Methodology {
+	return Methodology{
+		Model:   "sustainable-web-design-mvp",
+		Formula: "(bytes / 1_000_000_000) * 0.8 * 0.75 * 442",
+		Source:  "Sustainable Web Design",
+		Assumptions: []string{
+			"0.75 return-visit factor",
+			"442 gCO2e/kWh global average",
+		},
+	}
 }
 
 func collectElementBoxes(page *rod.Page) ([]domElement, error) {

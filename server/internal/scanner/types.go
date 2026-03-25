@@ -58,6 +58,19 @@ type Screenshot struct {
 	DataBase64 string `json:"data_base64"`
 }
 
+type Meta struct {
+	GeneratedAt    string `json:"generated_at"`
+	ScanDurationMS int64  `json:"scan_duration_ms"`
+	ScannerVersion string `json:"scanner_version"`
+}
+
+type Methodology struct {
+	Model       string   `json:"model"`
+	Formula     string   `json:"formula"`
+	Source      string   `json:"source"`
+	Assumptions []string `json:"assumptions"`
+}
+
 type Report struct {
 	URL                   string                `json:"url"`
 	Score                 string                `json:"score"`
@@ -73,6 +86,8 @@ type Report struct {
 	VampireElements       []ResourceSummary     `json:"vampire_elements"`
 	Performance           PerformanceMetrics    `json:"performance"`
 	Screenshot            Screenshot            `json:"screenshot"`
+	Meta                  Meta                  `json:"meta"`
+	Methodology           Methodology           `json:"methodology"`
 	Warnings              []string              `json:"warnings"`
 }
 

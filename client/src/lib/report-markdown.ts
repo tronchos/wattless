@@ -16,6 +16,9 @@ export function createMarkdownReport(
     `- FCP: ${formatMilliseconds(report.performance.fcp_ms)}`,
     `- Load: ${formatMilliseconds(report.performance.load_ms)}`,
     `- Hosting: ${report.hosting_verdict}${report.hosted_by ? ` (${report.hosted_by})` : ""}`,
+    `- Generado: ${report.meta.generated_at}`,
+    `- Duración del escaneo: ${formatMilliseconds(report.meta.scan_duration_ms)}`,
+    `- Versión del scanner: ${report.meta.scanner_version}`,
     ``,
     `## Resumen ejecutivo`,
     ``,
@@ -37,7 +40,19 @@ export function createMarkdownReport(
         `- #${index + 1} ${element.type}: ${element.url} (${formatBytes(element.bytes)})`,
     ),
     ``,
+    `## Metodología`,
+    ``,
+    `- Modelo: ${report.methodology.model}`,
+    `- Fuente: ${report.methodology.source}`,
+    `- Fórmula: \`${report.methodology.formula}\``,
+    ...report.methodology.assumptions.map((assumption) => `- Supuesto: ${assumption}`),
+    ``,
   ];
+
+  if (report.warnings.length > 0) {
+    lines.push(`## Advertencias`, ``);
+    lines.push(...report.warnings.map((warning) => `- ${warning}`), ``);
+  }
 
   if (greenFix) {
     lines.push(`## Green Fix sugerido`, ``);

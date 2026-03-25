@@ -88,9 +88,10 @@ import Script from "next/script";
 type HeroProps = {
   title: string;
   subtitle: string;
+  imageSrc: string;
 };
 
-export function Hero({ title, subtitle }: HeroProps) {
+export function Hero({ title, subtitle, imageSrc }: HeroProps) {
   return (
     <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
       <div className="space-y-4">
@@ -107,8 +108,8 @@ export function Hero({ title, subtitle }: HeroProps) {
 
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950">
         <Image
-          src="/showcase/hero-wattless.svg"
-          alt="Vista optimizada de la hero"
+          src={imageSrc}
+          alt={title}
           width={1200}
           height={900}
           priority
@@ -117,10 +118,9 @@ export function Hero({ title, subtitle }: HeroProps) {
         />
       </div>
 
-      <Script
-        src="/showcase/wattless-idle.js"
-        strategy="lazyOnload"
-      />
+      <Script id="non-critical-analytics" strategy="lazyOnload">
+        {"window.dispatchEvent(new CustomEvent('wattless:non-critical-ready'));"}
+      </Script>
     </section>
   );
 }`
@@ -143,8 +143,8 @@ export function Hero({ title, subtitle }: HeroProps) {
 	}
 
 	if language == "jsx" {
-		optimizedCode = strings.ReplaceAll(optimizedCode, "type HeroProps = {\n  title: string;\n  subtitle: string;\n};\n\n", "")
-		optimizedCode = strings.ReplaceAll(optimizedCode, "({ title, subtitle }: HeroProps)", "({ title, subtitle })")
+		optimizedCode = strings.ReplaceAll(optimizedCode, "type HeroProps = {\n  title: string;\n  subtitle: string;\n  imageSrc: string;\n};\n\n", "")
+		optimizedCode = strings.ReplaceAll(optimizedCode, "({ title, subtitle, imageSrc }: HeroProps)", "({ title, subtitle, imageSrc })")
 	}
 
 	changes := []string{

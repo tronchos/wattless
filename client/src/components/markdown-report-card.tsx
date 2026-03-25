@@ -33,7 +33,7 @@ export function MarkdownReportCard({
   return (
     <section className="panel rounded-[2rem] p-6">
       <p className="mono text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-        Markdown Report
+        Reporte Markdown
       </p>
       <h2 className="mt-3 text-2xl font-medium tracking-[-0.05em] text-white">
         Llévalo a un README o PR

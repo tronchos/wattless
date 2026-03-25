@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/tronchos/wattless/server/internal/config"
@@ -48,6 +49,8 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
+const minimumGreenFixCodeLength = 20
+
 func (h handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -82,8 +85,14 @@ func (h handler) handleGreenFix(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON payload"})
 		return
 	}
+
+	req.Code = strings.TrimSpace(req.Code)
 	if req.Code == "" {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "code is required"})
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Debes pegar un snippet antes de generar el Green Fix."})
+		return
+	}
+	if len(req.Code) < minimumGreenFixCodeLength {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "El snippet es demasiado corto para proponer un refactor útil."})
 		return
 	}
 

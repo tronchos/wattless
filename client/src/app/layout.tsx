@@ -16,7 +16,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "Wattless",
-  description: "Auditorías de sostenibilidad y rendimiento web con dashboard visual, insights IA y Green Fix.",
+  description: "Reductor de entropía digital para medir bytes, CO2, LCP y oportunidades reales de optimización web.",
 };
 
 export default function RootLayout({
