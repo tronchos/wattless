@@ -19,7 +19,7 @@ export function ScoreRing({ score, grams }: ScoreRingProps) {
   const progress = scoreProgress[score] ?? 0;
 
   return (
-    <article className="bg-surface-container-low p-8 rounded-xl flex flex-col gap-2 group hover:bg-surface-container transition-colors">
+    <article className="bg-surface-container-low p-6 rounded-xl flex flex-col gap-2 group hover:bg-surface-container transition-colors">
       <div className="flex justify-between w-full">
         <span className="text-on-surface-variant text-xs uppercase tracking-widest font-label flex items-center gap-2">
           Carbon Score
