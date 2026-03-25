@@ -1,0 +1,6 @@
+.git
+.DS_Store
+client/.next
+client/node_modules
+server/.cache
+server/tmp

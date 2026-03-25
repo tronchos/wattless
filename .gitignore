@@ -1,0 +1,11 @@
+client/.next
+client/node_modules
+client/.env.local
+client/.env.*.local
+server/.env
+server/.cache
+server/tmp
+dist
+coverage
+.DS_Store
+
