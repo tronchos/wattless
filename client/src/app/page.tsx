@@ -7,7 +7,7 @@ export default function HomePage() {
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <div className="space-y-5">
             <span className="mono inline-flex rounded-full border border-[var(--line-strong)] bg-[rgba(155,214,126,0.08)] px-3 py-1 text-xs uppercase tracking-[0.28em] text-[var(--accent-strong)]">
-              Producción lista para CubePath
+              Base de producción para CubePath
             </span>
             <div className="space-y-4">
               <h1 className="max-w-4xl text-4xl font-medium tracking-[-0.06em] text-white sm:text-5xl lg:text-7xl">

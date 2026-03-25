@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const minimumGreenFixCodeLength = 20;
+const maximumGreenFixCodeLength = 20_000;
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -23,6 +24,15 @@ export async function POST(request: Request) {
   if (trimmedCode.length < minimumGreenFixCodeLength) {
     return NextResponse.json(
       { error: "El snippet es demasiado corto para proponer un refactor útil." },
+      { status: 400 },
+    );
+  }
+  if (trimmedCode.length > maximumGreenFixCodeLength) {
+    return NextResponse.json(
+      {
+        error:
+          "El snippet es demasiado grande. Reduce el fragmento a 20.000 caracteres o menos.",
+      },
       { status: 400 },
     );
   }

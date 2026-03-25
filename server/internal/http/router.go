@@ -50,6 +50,7 @@ type errorResponse struct {
 }
 
 const minimumGreenFixCodeLength = 20
+const maximumGreenFixCodeLength = 20_000
 
 func (h handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -68,11 +69,13 @@ func (h handler) handleScan(w http.ResponseWriter, r *http.Request) {
 	report, err := h.scanner.Scan(ctx, req.URL)
 	if err != nil {
 		status := http.StatusInternalServerError
+		message := err.Error()
 		if isClientError(err) {
 			status = http.StatusBadRequest
+			message = clientErrorMessage(err)
 		}
 		h.logger.Warn("scan_failed", "url", req.URL, "error", err)
-		writeJSON(w, status, errorResponse{Error: err.Error()})
+		writeJSON(w, status, errorResponse{Error: message})
 		return
 	}
 
@@ -95,6 +98,10 @@ func (h handler) handleGreenFix(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "El snippet es demasiado corto para proponer un refactor útil."})
 		return
 	}
+	if len(req.Code) > maximumGreenFixCodeLength {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "El snippet es demasiado grande. Reduce el fragmento a 20.000 caracteres o menos."})
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), h.cfg.RequestTimeout)
 	defer cancel()
@@ -110,7 +117,18 @@ func (h handler) handleGreenFix(w http.ResponseWriter, r *http.Request) {
 }
 
 func isClientError(err error) bool {
-	return errors.Is(err, urlutil.ErrInvalidURL)
+	return errors.Is(err, urlutil.ErrInvalidURL) || errors.Is(err, urlutil.ErrBlockedTarget)
+}
+
+func clientErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, urlutil.ErrBlockedTarget):
+		return "Solo se permiten URLs públicas. Wattless bloquea localhost, IPs privadas y hosts internos."
+	case errors.Is(err, urlutil.ErrInvalidURL):
+		return "La URL no es válida o no pudo resolverse correctamente."
+	default:
+		return err.Error()
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

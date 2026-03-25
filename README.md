@@ -16,16 +16,17 @@ Wattless convierte ese coste invisible en un informe claro:
 - recursos dominantes y ahorro potencial
 - resumen IA y refactor guiado para un snippet real
 
-## Demo pública
+## Estado de despliegue
 
-- URL de producción en CubePath: `pendiente de publicar antes de la entrega final`
+- URL pública en CubePath: `pendiente de desplegar`
+- Estado actual: stack de producción validado localmente con `docker/compose.prod.yml`
 - Repo público: `https://github.com/tronchos/wattless`
 
-## Capturas y GIFs
+## Capturas y material visual
 
 - Captura actual del dashboard: [`docs/media/wattless-dashboard.webp`](docs/media/wattless-dashboard.webp)
 - Reporte JSON usado para esa captura: [`docs/media/wattless-dashboard-report.json`](docs/media/wattless-dashboard-report.json)
-- Material de la demo: `docs/media/`
+- Material visual disponible: `docs/media/`
 - Guion del pitch: [`docs/pitch.md`](docs/pitch.md)
 
 ![Dashboard actual de Wattless](docs/media/wattless-dashboard.webp)
@@ -133,6 +134,7 @@ docker compose -f docker/compose.prod.yml up --build
 #### Frontend
 
 - `SCANNER_API_URL` backend interno consumido por el BFF
+- `NEXT_PUBLIC_APP_URL` opcional para incluir la URL pública de Wattless en el Markdown exportado
 
 ## Limitaciones reales
 
@@ -140,10 +142,11 @@ docker compose -f docker/compose.prod.yml up --build
 - El `Green Fix` trabaja sobre snippets pegados por la persona usuaria; no reconstruye automáticamente el código fuente de un sitio tercero.
 - El veredicto de hosting depende de la disponibilidad de The Green Web Foundation.
 - Algunos recursos no tienen anclaje visual y no pueden resaltarse sobre la captura.
+- El escáner solo acepta destinos públicos `http/https`; bloquea `localhost`, IPs privadas y hosts internos.
 
 ## Roadmap corto post-hackatón
 
 - despliegue público en CubePath con dominio final
-- material visual definitivo en `docs/media/`
+- GIF corto del flujo completo una vez exista URL pública
 - más contexto de third-party cost y budget por recurso
 - exportación de reportes más orientada a PRs técnicos

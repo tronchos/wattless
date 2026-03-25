@@ -50,6 +50,9 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	if err := urlutil.ValidatePublicTarget(ctx, hostname); err != nil {
+		return Report{}, err
+	}
 
 	resources, perf, screenshot, warnings, err := s.runBrowserScan(ctx, normalizedURL)
 	if err != nil {

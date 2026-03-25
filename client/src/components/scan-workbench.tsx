@@ -47,6 +47,7 @@ const scanProgressLabels = [
   "Identificando carga crítica del LCP",
 ];
 const minimumGreenFixCodeLength = 20;
+const maximumGreenFixCodeLength = 20_000;
 
 export function ScanWorkbench() {
   const [inputURL, setInputURL] = useState(sampleURL);
@@ -95,7 +96,7 @@ export function ScanWorkbench() {
     try {
       const nextReport = await scanURL(nextURL);
       startTransition(() => {
-        setPreviousReport(currentReport);
+        setPreviousReport(resolveComparablePreviousReport(currentReport, nextReport));
         setReport(nextReport);
         setSelectedElementID(resolvePreferredElement(nextReport)?.id ?? null);
       });
@@ -115,7 +116,13 @@ export function ScanWorkbench() {
 
     const trimmedCode = greenFixCode.trim();
     if (trimmedCode.length < minimumGreenFixCodeLength) {
+      setGreenFixResult(null);
       setError("Pega al menos 20 caracteres de código para generar un Green Fix útil.");
+      return;
+    }
+    if (trimmedCode.length > maximumGreenFixCodeLength) {
+      setGreenFixResult(null);
+      setError("Reduce el snippet a 20.000 caracteres o menos para generar el Green Fix.");
       return;
     }
 
@@ -149,6 +156,11 @@ export function ScanWorkbench() {
     } finally {
       setIsGeneratingFix(false);
     }
+  }
+
+  function handleGreenFixCodeChange(value: string) {
+    setGreenFixCode(value);
+    setGreenFixResult(null);
   }
 
   return (
@@ -429,7 +441,7 @@ export function ScanWorkbench() {
               <GreenFixStudio
                 report={report}
                 code={greenFixCode}
-                onCodeChange={setGreenFixCode}
+                onCodeChange={handleGreenFixCodeChange}
                 onGenerate={handleGenerateGreenFix}
                 isGenerating={isGeneratingFix}
                 result={greenFixResult}
@@ -477,4 +489,15 @@ function resolvePreferredElement(report: ScanReport): VampireElement | null {
     }
   }
   return report.vampire_elements[0] ?? null;
+}
+
+function resolveComparablePreviousReport(
+  currentReport: ScanReport | null,
+  nextReport: ScanReport,
+): ScanReport | null {
+  if (!currentReport) {
+    return null;
+  }
+
+  return currentReport.url === nextReport.url ? currentReport : null;
 }

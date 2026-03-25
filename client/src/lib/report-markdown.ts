@@ -1,6 +1,10 @@
 import { formatBytes, formatGrams, formatMilliseconds } from "@/lib/api";
 import type { GreenFixResponse, ScanReport } from "@/lib/types";
 
+const wattlessRepositoryURL = "https://github.com/tronchos/wattless";
+const wattlessAppURL =
+  process.env.NEXT_PUBLIC_APP_URL?.trim() || "despliegue público pendiente";
+
 export function createMarkdownReport(
   report: ScanReport,
   greenFix: GreenFixResponse | null,
@@ -8,6 +12,8 @@ export function createMarkdownReport(
   const lines = [
     `# Wattless Report`,
     ``,
+    `- Generado con Wattless: ${wattlessAppURL}`,
+    `- Repo: ${wattlessRepositoryURL}`,
     `- URL: ${report.url}`,
     `- Score: ${report.score}`,
     `- CO2 por visita: ${formatGrams(report.co2_grams_per_visit)}`,

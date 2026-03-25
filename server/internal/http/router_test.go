@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	nethttp "net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,18 @@ func (s stubScanner) RefactorCode(ctx context.Context, request insights.Refactor
 func TestScanReturnsBadRequestForInvalidURL(t *testing.T) {
 	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000", RequestTimeout: time.Second}, stubScanner{err: urlutil.ErrInvalidURL}, slog.Default())
 	req := httptest.NewRequest(nethttp.MethodPost, "/api/v1/scans", bytes.NewBufferString(`{"url":"notaurl"}`))
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", recorder.Code)
+	}
+}
+
+func TestScanReturnsBadRequestForBlockedTarget(t *testing.T) {
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000", RequestTimeout: time.Second}, stubScanner{err: urlutil.ErrBlockedTarget}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/v1/scans", bytes.NewBufferString(`{"url":"http://127.0.0.1"}`))
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, req)
@@ -68,6 +81,19 @@ func TestGreenFixReturnsBadRequestForMissingCode(t *testing.T) {
 func TestGreenFixReturnsBadRequestForShortCode(t *testing.T) {
 	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000", RequestTimeout: time.Second}, stubScanner{}, slog.Default())
 	req := httptest.NewRequest(nethttp.MethodPost, "/api/v1/green-fix", bytes.NewBufferString(`{"framework":"next","language":"tsx","code":"const x = 1;"}`))
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", recorder.Code)
+	}
+}
+
+func TestGreenFixReturnsBadRequestForOversizedCode(t *testing.T) {
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000", RequestTimeout: time.Second}, stubScanner{}, slog.Default())
+	payload := `{"framework":"next","language":"tsx","code":"` + strings.Repeat("a", maximumGreenFixCodeLength+1) + `"}`
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/v1/green-fix", bytes.NewBufferString(payload))
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, req)
