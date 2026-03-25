@@ -1,5 +1,5 @@
 import { formatBytes, formatGrams, formatMilliseconds } from "@/lib/api";
-import type { GreenFixResponse, ScanReport } from "@/lib/types";
+import type { ScanReport } from "@/lib/types";
 
 const wattlessRepositoryURL = "https://github.com/tronchos/wattless";
 const wattlessAppURL =
@@ -7,7 +7,6 @@ const wattlessAppURL =
 
 export function createMarkdownReport(
   report: ScanReport,
-  greenFix: GreenFixResponse | null,
 ): string {
   const lines = [
     `# Wattless Report`,
@@ -60,12 +59,14 @@ export function createMarkdownReport(
     lines.push(...report.warnings.map((warning) => `- ${warning}`), ``);
   }
 
-  if (greenFix) {
-    lines.push(`## Green Fix sugerido`, ``);
-    lines.push(greenFix.summary, ``);
-    lines.push(...greenFix.changes.map((change) => `- ${change}`), ``);
-    lines.push("```tsx", greenFix.optimized_code, "```", ``);
-    lines.push(`Impacto esperado: ${greenFix.expected_impact}`, ``);
+  const firstAction = report.insights.top_actions[0];
+  if (firstAction?.recommended_fix) {
+    const fix = firstAction.recommended_fix;
+    lines.push(`## Wattless Optimization (Sugerencia Automatizada)`, ``);
+    lines.push(fix.summary, ``);
+    lines.push(...fix.changes.map((change) => `- ${change}`), ``);
+    lines.push("```tsx", fix.optimized_code, "```", ``);
+    lines.push(`Impacto esperado: ${fix.expected_impact}`, ``);
   }
 
   return lines.join("\n");

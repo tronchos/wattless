@@ -17,7 +17,6 @@ import { useState } from "react";
 
 import { BreakdownBars } from "@/components/breakdown-bars";
 import { CompareBanner } from "@/components/compare-banner";
-import { GreenFixStudio } from "@/components/green-fix-studio";
 import { InsightsPanel } from "@/components/insights-panel";
 import { MarkdownReportCard } from "@/components/markdown-report-card";
 import { MethodologyCard } from "@/components/methodology-card";
@@ -37,8 +36,8 @@ const emptyStateHighlights = [
   },
   {
     id: "green-fix",
-    title: "Green Fix",
-    description: "Refactor guiado para un snippet real cuando el informe esté listo.",
+    title: "Zero-Click Fix",
+    description: "Snippets generados por IA integrados directamente en el panel de análisis sin necesidad de código extra.",
   },
   {
     id: "methodology",
@@ -57,15 +56,9 @@ export function ScanWorkbench() {
     setSelectedElementID,
     selectedElement,
     scanError,
-    greenFixError,
     isScanning,
     scanProgressIndex,
-    greenFixCode,
-    isGeneratingFix,
-    greenFixResult,
     handleSubmit,
-    handleGenerateGreenFix,
-    handleGreenFixCodeChange,
   } = useAudit();
 
   const [isTechnicalDetailsOpen, setIsTechnicalDetailsOpen] = useState(false);
@@ -170,9 +163,10 @@ export function ScanWorkbench() {
                 <CompareBanner current={report} previous={previousReport} />
               ) : null}
 
-              {/* SECTION 1: Executive Summary */}
-              <div className="space-y-6">
-                 <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* SECTION 1: Executive Summary & Visual Forensic */}
+              <div className="space-y-8">
+                 {/* Top KPIs */}
+                 <section className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
                    <ScoreRing
                      score={report.score}
                      grams={formatGrams(report.co2_grams_per_visit)}
@@ -197,44 +191,35 @@ export function ScanWorkbench() {
                      icon={Gauge}
                    />
                  </section>
-                 {/* Reorganized to appear immediately under KPIs (The "Why") */}
-                 <InsightsPanel
-                   report={report}
-                   selectedElementID={selectedElementID}
-                   onSelectElement={setSelectedElementID}
-                 />
-              </div>
 
-              {/* SECTION 2: Forensic Analysis (The "Where") */}
-              <section id="diagnostic" className="grid grid-cols-1 lg:grid-cols-5 gap-8 border-t border-outline-variant/10 pt-10">
-                <div className="lg:col-span-3">
-                  <ScreenshotInspector
-                    screenshot={report.screenshot}
-                    elements={report.vampire_elements}
-                    selectedElement={selectedElement}
-                    onSelect={setSelectedElementID}
-                  />
-                </div>
-                <div className="lg:col-span-2">
-                  <VampireList
-                    elements={report.vampire_elements}
-                    selectedElementID={selectedElementID}
-                    onSelect={setSelectedElementID}
-                  />
-                </div>
-              </section>
+                 {/* Split View: Insights + Vampires (Left) vs Screenshot (Right) */}
+                 <section id="diagnostic" className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.4fr] xl:grid-cols-[1fr_1.6fr] gap-8 xl:gap-12 pt-4">
+                   {/* Left Column: Semantic Data (Actionable & Tabular) */}
+                   <div className="flex flex-col gap-8">
+                     <InsightsPanel
+                       report={report}
+                       selectedElementID={selectedElementID}
+                       onSelectElement={setSelectedElementID}
+                     />
+                     <VampireList
+                       elements={report.vampire_elements}
+                       selectedElementID={selectedElementID}
+                       onSelect={setSelectedElementID}
+                     />
+                   </div>
 
-              {/* SECTION 3: Actionable Solutions (The "How") */}
-              <div className="border-t border-outline-variant/10 pt-8">
-                <GreenFixStudio
-                  report={report}
-                  code={greenFixCode}
-                  onCodeChange={handleGreenFixCodeChange}
-                  onGenerate={handleGenerateGreenFix}
-                  isGenerating={isGeneratingFix}
-                  result={greenFixResult}
-                  error={greenFixError}
-                />
+                   {/* Right Column: Visual Evidence (Hero Image Effect) */}
+                   <div className="relative">
+                     <div className="sticky top-8">
+                       <ScreenshotInspector
+                         screenshot={report.screenshot}
+                         elements={report.vampire_elements}
+                         selectedElement={selectedElement}
+                         onSelect={setSelectedElementID}
+                       />
+                     </div>
+                   </div>
+                 </section>
               </div>
 
               {/* SECTION 4: Technical Evidence (Accordion to reduce cognitive load) */}
@@ -357,7 +342,7 @@ export function ScanWorkbench() {
               </section>
 
               {/* SECTION 5: Export (End of Funnel) */}
-              <MarkdownReportCard report={report} greenFix={greenFixResult} />
+              <MarkdownReportCard report={report} />
             </m.section>
           ) : (
             <m.section

@@ -55,25 +55,3 @@ func (provider CompositeProvider) SummarizeReport(ctx context.Context, report Re
 
 	return ScanInsights{}, nil
 }
-
-func (provider CompositeProvider) RefactorCode(ctx context.Context, request RefactorRequest) (RefactorResult, error) {
-	if provider.primary != nil {
-		result, err := provider.primary.RefactorCode(ctx, request)
-		if err == nil && result.OptimizedCode != "" {
-			if result.Provider == "" {
-				result.Provider = provider.primary.Name()
-			}
-			return result, nil
-		}
-	}
-
-	if provider.fallback != nil {
-		result, err := provider.fallback.RefactorCode(ctx, request)
-		if result.Provider == "" {
-			result.Provider = provider.fallback.Name()
-		}
-		return result, err
-	}
-
-	return RefactorResult{}, nil
-}

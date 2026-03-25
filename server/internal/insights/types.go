@@ -47,13 +47,21 @@ type ReportContext struct {
 	TopResources          []ResourceContext  `json:"top_resources"`
 }
 
+type RecommendedFix struct {
+	Summary        string   `json:"summary"`
+	OptimizedCode  string   `json:"optimized_code"`
+	Changes        []string `json:"changes"`
+	ExpectedImpact string   `json:"expected_impact"`
+}
+
 type TopAction struct {
-	ID                    string `json:"id"`
-	Title                 string `json:"title"`
-	Reason                string `json:"reason"`
-	EstimatedSavingsBytes int64  `json:"estimated_savings_bytes"`
-	LikelyLCPImpact       string `json:"likely_lcp_impact"`
-	RelatedResourceID     string `json:"related_resource_id"`
+	ID                    string          `json:"id"`
+	Title                 string          `json:"title"`
+	Reason                string          `json:"reason"`
+	EstimatedSavingsBytes int64           `json:"estimated_savings_bytes"`
+	LikelyLCPImpact       string          `json:"likely_lcp_impact"`
+	RelatedResourceID     string          `json:"related_resource_id"`
+	RecommendedFix        *RecommendedFix `json:"recommended_fix,omitempty"`
 }
 
 type ScanInsights struct {
@@ -63,34 +71,8 @@ type ScanInsights struct {
 	TopActions       []TopAction `json:"top_actions"`
 }
 
-type RefactorReportContext struct {
-	URL                   string  `json:"url"`
-	Score                 string  `json:"score,omitempty"`
-	CO2GramsPerVisit      float64 `json:"co2_grams_per_visit,omitempty"`
-	TotalBytesTransferred int64   `json:"total_bytes_transferred,omitempty"`
-	LCPMS                 int64   `json:"lcp_ms,omitempty"`
-	FCPMS                 int64   `json:"fcp_ms,omitempty"`
-}
-
-type RefactorRequest struct {
-	Framework         string                `json:"framework"`
-	Language          string                `json:"language"`
-	Code              string                `json:"code"`
-	RelatedResourceID string                `json:"related_resource_id"`
-	ReportContext     RefactorReportContext `json:"report_context"`
-}
-
-type RefactorResult struct {
-	Provider       string   `json:"provider"`
-	Summary        string   `json:"summary"`
-	OptimizedCode  string   `json:"optimized_code"`
-	Changes        []string `json:"changes"`
-	ExpectedImpact string   `json:"expected_impact"`
-}
-
 type Provider interface {
 	Name() string
 	SuggestResource(ResourceContext) string
 	SummarizeReport(context.Context, ReportContext) (ScanInsights, error)
-	RefactorCode(context.Context, RefactorRequest) (RefactorResult, error)
 }

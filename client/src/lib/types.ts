@@ -5,6 +5,13 @@ export interface BoundingBox {
   height: number;
 }
 
+export interface RecommendedFix {
+  summary: string;
+  optimized_code: string;
+  changes: string[];
+  expected_impact: string;
+}
+
 export interface TopAction {
   id: string;
   title: string;
@@ -12,6 +19,7 @@ export interface TopAction {
   estimated_savings_bytes: number;
   likely_lcp_impact: "high" | "medium" | "low";
   related_resource_id: string;
+  recommended_fix?: RecommendedFix;
 }
 
 export interface ScanInsights {

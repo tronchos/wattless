@@ -3,18 +3,16 @@
 import { Copy, Download, FileText } from "lucide-react";
 
 import { createMarkdownReport } from "@/lib/report-markdown";
-import type { GreenFixResponse, ScanReport } from "@/lib/types";
+import type { ScanReport } from "@/lib/types";
 
 interface MarkdownReportCardProps {
   report: ScanReport;
-  greenFix: GreenFixResponse | null;
 }
 
 export function MarkdownReportCard({
   report,
-  greenFix,
 }: MarkdownReportCardProps) {
-  const markdown = createMarkdownReport(report, greenFix);
+  const markdown = createMarkdownReport(report);
 
   async function copyMarkdown() {
     await navigator.clipboard.writeText(markdown);

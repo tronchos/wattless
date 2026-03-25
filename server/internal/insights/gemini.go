@@ -48,7 +48,13 @@ Devuelve JSON estricto sin markdown con esta forma:
       "reason": string,
       "estimated_savings_bytes": number,
       "likely_lcp_impact": "high"|"medium"|"low",
-      "related_resource_id": string
+      "related_resource_id": string,
+      "recommended_fix": {
+        "summary": "Explicación breve de la corrección",
+        "optimized_code": "Código React/Next de ejemplo reemplazando el asset infractor",
+        "changes": ["Cambio 1", "Cambio 2"],
+        "expected_impact": "Impacto esperado"
+      }
     }
   ]
 }
@@ -59,6 +65,8 @@ Reglas:
 - Máximo 3 acciones.
 - Cada acción debe referenciar un related_resource_id existente.
 - Prioriza recursos con mayor estimated_savings_bytes y relación con LCP o terceros.
+- El campo 'recommended_fix' debe incluirse obligatoriamente en al menos la primera top action (el cuello de botella crítico).
+- En 'optimized_code', produce un snippet nativo de código (preferible React/NextJS) ilustrando la solución sin bloques markdown y asumiendo que el asset problemático se usará ahí (ej: si falla img.png, escribe <Image src="img.png"... />). Mantenlo limpio y profesional.
 
 Contexto:
 %s`, mustJSON(report))
@@ -81,46 +89,7 @@ Contexto:
 	}, nil
 }
 
-func (provider GeminiProvider) RefactorCode(ctx context.Context, request RefactorRequest) (RefactorResult, error) {
-	prompt := fmt.Sprintf(`Actúa como revisor senior de React/Next.js.
-Devuelve JSON estricto sin markdown con esta forma:
-{
-  "summary": string,
-  "optimized_code": string,
-  "changes": [string],
-  "expected_impact": string
-}
 
-Reglas:
-- Escribe en español.
-- Si el framework es "next", prioriza next/image, Script con strategy apropiada y minimizar JS crítico.
-- Mantén el código ejecutable.
-- No uses bloques markdown.
-- Conserva el objetivo original del snippet.
-- Si falta contexto, produce una mejora razonable y explícita.
-
-Solicitud:
-%s`, mustJSON(request))
-
-	var payload struct {
-		Summary        string   `json:"summary"`
-		OptimizedCode  string   `json:"optimized_code"`
-		Changes        []string `json:"changes"`
-		ExpectedImpact string   `json:"expected_impact"`
-	}
-
-	if err := provider.generateJSON(ctx, prompt, &payload); err != nil {
-		return RefactorResult{}, err
-	}
-
-	return RefactorResult{
-		Provider:       provider.Name(),
-		Summary:        strings.TrimSpace(payload.Summary),
-		OptimizedCode:  strings.TrimSpace(payload.OptimizedCode),
-		Changes:        payload.Changes,
-		ExpectedImpact: strings.TrimSpace(payload.ExpectedImpact),
-	}, nil
-}
 
 func (provider GeminiProvider) generateJSON(ctx context.Context, prompt string, target any) error {
 	if provider.apiKey == "" {

@@ -45,6 +45,36 @@ func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report Repo
 		}
 
 		title, reason, impact := provider.actionCopy(resource, report)
+		
+		var recommendedFix *RecommendedFix
+		if index == 0 {
+			recommendedFix = &RecommendedFix{
+				Summary: "Implementación genérica recomendada para atajar bloqueos de renderizado.",
+				OptimizedCode: `import Image from "next/image";
+import Script from "next/script";
+
+export default function OptimizedComponent({ imageSrc }) {
+  return (
+    <div>
+      <Image
+        src={imageSrc}
+        alt="Dominant Asset"
+        width={1200}
+        height={900}
+        priority={true}
+        sizes="(max-width: 768px) 100vw, 48vw"
+      />
+      <Script strategy="lazyOnload">
+        { /* Diferimos los terceros */ }
+      </Script>
+    </div>
+  );
+}`,
+				Changes: []string{"Carga priorizada de LCP", "Diferido de tags externos"},
+				ExpectedImpact: "Debería reducir substancialmente el bloqueo de la hebra principal.",
+			}
+		}
+
 		actions = append(actions, TopAction{
 			ID:                    fmt.Sprintf("act-%d", index+1),
 			Title:                 title,
@@ -52,6 +82,7 @@ func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report Repo
 			EstimatedSavingsBytes: resource.EstimatedSavingsBytes,
 			LikelyLCPImpact:       impact,
 			RelatedResourceID:     resource.ID,
+			RecommendedFix:        recommendedFix,
 		})
 	}
 
@@ -78,94 +109,7 @@ func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report Repo
 	}, nil
 }
 
-func (provider RuleBasedProvider) RefactorCode(_ context.Context, request RefactorRequest) (RefactorResult, error) {
-	framework := strings.ToLower(strings.TrimSpace(request.Framework))
-	language := strings.ToLower(strings.TrimSpace(request.Language))
 
-	optimizedCode := `import Image from "next/image";
-import Script from "next/script";
-
-type HeroProps = {
-  title: string;
-  subtitle: string;
-  imageSrc: string;
-};
-
-export function Hero({ title, subtitle, imageSrc }: HeroProps) {
-  return (
-    <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-      <div className="space-y-4">
-        <p className="text-sm uppercase tracking-[0.24em] text-emerald-300">
-          Rendimiento sostenible
-        </p>
-        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          {title}
-        </h1>
-        <p className="max-w-2xl text-base leading-7 text-slate-300">
-          {subtitle}
-        </p>
-      </div>
-
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950">
-        <Image
-          src={imageSrc}
-          alt={title}
-          width={1200}
-          height={900}
-          priority
-          sizes="(max-width: 768px) 100vw, 48vw"
-          className="h-auto w-full"
-        />
-      </div>
-
-      <Script id="non-critical-analytics" strategy="lazyOnload">
-        {"window.dispatchEvent(new CustomEvent('wattless:non-critical-ready'));"}
-      </Script>
-    </section>
-  );
-}`
-
-	if framework != "next" && framework != "react" {
-		optimizedCode = `export function optimizeHero(container) {
-  const image = container.querySelector("img");
-  if (image) {
-    image.loading = "lazy";
-    image.decoding = "async";
-    image.width = image.width || 1200;
-    image.height = image.height || 900;
-  }
-
-  const thirdPartyScripts = container.querySelectorAll("script[data-non-critical='true']");
-  for (const script of thirdPartyScripts) {
-    script.defer = true;
-  }
-}`
-	}
-
-	if language == "jsx" {
-		optimizedCode = strings.ReplaceAll(optimizedCode, "type HeroProps = {\n  title: string;\n  subtitle: string;\n  imageSrc: string;\n};\n\n", "")
-		optimizedCode = strings.ReplaceAll(optimizedCode, "({ title, subtitle, imageSrc }: HeroProps)", "({ title, subtitle, imageSrc })")
-	}
-
-	changes := []string{
-		"Uso de un asset optimizado para el bloque principal.",
-		"`sizes` y dimensiones explícitas para reducir trabajo de layout.",
-		"Carga diferida del script no crítico para liberar el render inicial.",
-	}
-
-	expectedImpact := "Reduce transferencia en el hero, hace más estable el render principal y suele mejorar el LCP sin empeorar la experiencia."
-	if request.ReportContext.LCPMS > 0 {
-		expectedImpact = fmt.Sprintf("Ataca el cuello de botella del render principal. Con un LCP actual de %d ms, esta refactorización debería recortar bytes y mejorar la percepción de velocidad.", request.ReportContext.LCPMS)
-	}
-
-	return RefactorResult{
-		Provider:       provider.Name(),
-		Summary:        "Se prioriza el contenido crítico, se optimiza el asset principal y se retrasa el JavaScript no esencial.",
-		OptimizedCode:  optimizedCode,
-		Changes:        changes,
-		ExpectedImpact: expectedImpact,
-	}, nil
-}
 
 func (provider RuleBasedProvider) actionCopy(resource ResourceContext, report ReportContext) (title string, reason string, impact string) {
 	impact = "medium"

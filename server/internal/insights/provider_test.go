@@ -16,10 +16,6 @@ func (failingProvider) SummarizeReport(ctx context.Context, report ReportContext
 	return ScanInsights{}, errors.New("boom")
 }
 
-func (failingProvider) RefactorCode(ctx context.Context, request RefactorRequest) (RefactorResult, error) {
-	return RefactorResult{}, errors.New("boom")
-}
-
 func TestCompositeProviderFallsBackForSummary(t *testing.T) {
 	provider := NewCompositeProvider(failingProvider{}, NewRuleBasedProvider())
 
@@ -43,24 +39,5 @@ func TestCompositeProviderFallsBackForSummary(t *testing.T) {
 	}
 	if result.ExecutiveSummary == "" {
 		t.Fatal("expected executive summary")
-	}
-}
-
-func TestCompositeProviderFallsBackForRefactor(t *testing.T) {
-	provider := NewCompositeProvider(failingProvider{}, NewRuleBasedProvider())
-
-	result, err := provider.RefactorCode(context.Background(), RefactorRequest{
-		Framework: "next",
-		Language:  "tsx",
-		Code:      "export function Hero() { return <img src=\"/hero.jpg\" /> }",
-	})
-	if err != nil {
-		t.Fatalf("expected fallback refactor, got error: %v", err)
-	}
-	if result.Provider != "rule_based" {
-		t.Fatalf("expected fallback provider, got %s", result.Provider)
-	}
-	if result.OptimizedCode == "" {
-		t.Fatal("expected optimized code")
 	}
 }

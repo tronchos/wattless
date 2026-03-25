@@ -174,21 +174,6 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 	return report, nil
 }
 
-func (s *Service) RefactorCode(ctx context.Context, request insights.RefactorRequest) (insights.RefactorResult, error) {
-	request.Code = strings.TrimSpace(request.Code)
-	request.Framework = strings.TrimSpace(request.Framework)
-	request.Language = strings.TrimSpace(request.Language)
-	if request.Code == "" {
-		return insights.RefactorResult{}, fmt.Errorf("code is required")
-	}
-	if request.Framework == "" {
-		request.Framework = "next"
-	}
-	if request.Language == "" {
-		request.Language = "tsx"
-	}
-	return s.insights.RefactorCode(ctx, request)
-}
 
 type enrichedResource struct {
 	ID            string

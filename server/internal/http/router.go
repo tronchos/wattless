@@ -6,18 +6,15 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/tronchos/wattless/server/internal/config"
-	"github.com/tronchos/wattless/server/internal/insights"
 	"github.com/tronchos/wattless/server/internal/scanner"
 	"github.com/tronchos/wattless/server/pkg/urlutil"
 )
 
 type ScanService interface {
 	Scan(context.Context, string) (scanner.Report, error)
-	RefactorCode(context.Context, insights.RefactorRequest) (insights.RefactorResult, error)
 }
 
 type handler struct {
@@ -36,7 +33,6 @@ func NewRouter(cfg config.Config, scanService ScanService, logger *slog.Logger) 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.handleHealth)
 	mux.HandleFunc("POST /api/v1/scans", h.handleScan)
-	mux.HandleFunc("POST /api/v1/green-fix", h.handleGreenFix)
 
 	return withLogging(logger, withCORS(cfg.ClientOrigin, mux))
 }
@@ -48,9 +44,6 @@ type scanRequest struct {
 type errorResponse struct {
 	Error string `json:"error"`
 }
-
-const minimumGreenFixCodeLength = 20
-const maximumGreenFixCodeLength = 20_000
 
 func (h handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -80,40 +73,6 @@ func (h handler) handleScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, report)
-}
-
-func (h handler) handleGreenFix(w http.ResponseWriter, r *http.Request) {
-	var req insights.RefactorRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON payload"})
-		return
-	}
-
-	req.Code = strings.TrimSpace(req.Code)
-	if req.Code == "" {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Debes pegar un snippet antes de generar el Green Fix."})
-		return
-	}
-	if len(req.Code) < minimumGreenFixCodeLength {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "El snippet es demasiado corto para proponer un refactor útil."})
-		return
-	}
-	if len(req.Code) > maximumGreenFixCodeLength {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "El snippet es demasiado grande. Reduce el fragmento a 20.000 caracteres o menos."})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), h.cfg.RequestTimeout)
-	defer cancel()
-
-	result, err := h.scanner.RefactorCode(ctx, req)
-	if err != nil {
-		h.logger.Warn("green_fix_failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error()})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, result)
 }
 
 func isClientError(err error) bool {
