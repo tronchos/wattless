@@ -3,23 +3,40 @@ import type { LucideIcon } from "lucide-react";
 interface MetricCardProps {
   label: string;
   value: string;
+  caption: string;
   hint: string;
+  progress?: number;
   icon?: LucideIcon;
 }
 
-export function MetricCard({ label, value, hint, icon: Icon }: MetricCardProps) {
+export function MetricCard({
+  label,
+  value,
+  caption,
+  hint,
+  progress,
+  icon: Icon,
+}: MetricCardProps) {
   return (
-    <article className="panel rounded-[1.75rem] p-5">
-      <div className="flex items-start justify-between gap-3">
-        <p className="mono text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-          {label}
-        </p>
-        {Icon ? <Icon className="h-4 w-4 text-[var(--accent)]" /> : null}
-      </div>
-      <p className="mt-4 text-3xl font-medium tracking-[-0.05em] text-white">
+    <article className="bg-surface-container-low p-8 rounded-xl flex flex-col gap-2 group hover:bg-surface-container transition-colors">
+      <span className="text-on-surface-variant text-xs uppercase tracking-widest font-label flex items-center gap-2">
+        {Icon ? <Icon className="h-4 w-4" /> : null} {label}
+      </span>
+      <div className="text-5xl font-headline font-bold text-on-surface mt-2">
         {value}
-      </p>
-      <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{hint}</p>
+      </div>
+      <p className="text-sm text-on-surface-variant mt-2 italic">{caption}</p>
+
+      {typeof progress === "number" ? (
+        <div className="w-full h-1.5 bg-surface-container-highest rounded-full mt-4 overflow-hidden">
+          <div
+            className="h-full bg-primary"
+            style={{ width: `${Math.max(progress, 6)}%` }}
+          />
+        </div>
+      ) : null}
+
+      <p className="mt-4 text-sm leading-7 text-on-surface-variant/80">{hint}</p>
     </article>
   );
 }

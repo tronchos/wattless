@@ -1,55 +1,54 @@
 import { ScanWorkbench } from "@/components/scan-workbench";
+import { Leaf } from "lucide-react";
 
 export default function HomePage() {
   return (
-    <main className="app-shell min-h-screen px-5 py-8 sm:px-8 lg:px-10">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col gap-8">
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-          <div className="space-y-5">
-            <span className="mono inline-flex rounded-full border border-[var(--line-strong)] bg-[rgba(155,214,126,0.08)] px-3 py-1 text-xs uppercase tracking-[0.28em] text-[var(--accent-strong)]">
-              Base de producción para CubePath
+    <div className="bg-surface text-on-surface min-h-screen selection:bg-primary selection:text-on-primary">
+      {/* TopNavBar */}
+      <nav className="sticky top-0 z-50 glass-header border-b border-outline-variant/10">
+        <div className="flex justify-between items-center w-full px-6 py-4 max-w-screen-2xl mx-auto">
+          <div className="text-xl font-bold tracking-tight text-primary flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+              <Leaf className="h-5 w-5" />
             </span>
-            <div className="space-y-4">
-              <h1 className="max-w-4xl text-4xl font-medium tracking-[-0.06em] text-white sm:text-5xl lg:text-7xl">
-                Wattless no es solo un auditor; es un reductor de entropía digital.
-              </h1>
-              <p className="max-w-2xl text-base leading-7 text-[var(--muted)] sm:text-lg">
-                Aplicamos principios de termodinámica al desarrollo web para
-                que el software deje de calentar el planeta innecesariamente:
-                menos bytes, menos coste, mejor UX y un camino claro de mejora.
-              </p>
-            </div>
+            Digital Biome Auditor
           </div>
-          <div className="panel flex items-end rounded-[2rem] p-6">
-            <div className="space-y-4">
-              <p className="mono text-xs uppercase tracking-[0.26em] text-[var(--accent)]">
-                Capa de confianza
-              </p>
-              <p className="text-sm leading-7 text-[var(--muted)]">
-                Wattless combina escaneo en runtime con Go, métricas reales de
-                Web Performance y recomendaciones accionables para convertir el
-                coste invisible de una web en decisiones técnicas concretas.
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-[var(--line)] bg-[var(--panel-muted)] p-4">
-                  <div className="mono text-xs uppercase tracking-[0.22em] text-[var(--muted)]">
-                    Método
-                  </div>
-                  <div className="mt-2 text-lg text-white">Sustainable Web Design + LCP</div>
-                </div>
-                <div className="rounded-2xl border border-[var(--line)] bg-[var(--panel-muted)] p-4">
-                  <div className="mono text-xs uppercase tracking-[0.22em] text-[var(--muted)]">
-                    Infraestructura
-                  </div>
-                  <div className="mt-2 text-lg text-white">Next.js + Go + CubePath</div>
-                </div>
-              </div>
-            </div>
+          <div className="hidden md:flex items-center gap-8 text-sm uppercase tracking-widest font-label font-bold">
+            <a className="text-primary border-b-2 border-primary pb-1" href="#scanner">Reports</a>
+            <a className="text-on-surface-variant hover:text-on-surface transition-colors" href="#diagnostic">Diagnostics</a>
+            <a className="text-on-surface-variant hover:text-on-surface transition-colors" href="#">Methodology</a>
           </div>
-        </section>
+          <div className="flex items-center gap-4">
+            <a href="#scanner" className="bg-primary-container text-on-primary-container px-5 py-2 rounded-xl text-sm font-bold hover:bg-primary-container/80 transition-all active:scale-95 duration-200">
+              Run Audit
+            </a>
+          </div>
+        </div>
+      </nav>
 
+      <main className="max-w-7xl mx-auto px-6 pt-12 pb-24">
         <ScanWorkbench />
-      </div>
-    </main>
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-surface-container-lowest border-t border-outline-variant/10 py-12 mt-12">
+        <div className="flex flex-col md:flex-row justify-between items-center px-8 w-full max-w-7xl mx-auto gap-8">
+          <div className="space-y-2 text-center md:text-left">
+            <div className="text-primary font-bold text-lg">Digital Biome</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] font-label text-on-surface-variant/60">
+              © 2026 Digital Biome. Low-carbon audited.
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-center gap-8">
+            <a className="text-on-surface-variant hover:text-primary transition-colors text-xs uppercase tracking-widest font-label" href="#">Documentation</a>
+            <a className="text-on-surface-variant hover:text-primary transition-colors text-xs uppercase tracking-widest font-label" href="#">Privacy Policy</a>
+            <a className="text-on-surface-variant hover:text-primary transition-colors text-xs uppercase tracking-widest font-label" href="#">Carbon Calculator</a>
+          </div>
+          <div className="flex items-center gap-4 text-on-surface-variant/40">
+            <Leaf className="w-6 h-6" />
+          </div>
+        </div>
+      </footer>
+    </div>
   );
 }

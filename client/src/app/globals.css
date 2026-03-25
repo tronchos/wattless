@@ -1,19 +1,61 @@
 @import "tailwindcss";
 
-:root {
-  --background: #08110d;
-  --foreground: #edf5ef;
-  --panel: rgba(18, 29, 24, 0.82);
-  --panel-strong: #112018;
-  --panel-muted: rgba(42, 58, 49, 0.45);
-  --line: rgba(175, 218, 190, 0.12);
-  --line-strong: rgba(175, 218, 190, 0.28);
-  --accent: #9bd67e;
-  --accent-strong: #d8ff7f;
-  --muted: #9ab6a4;
-  --warning: #ffb86b;
-  --danger: #ff7e6b;
-  --shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+@theme {
+  --font-headline: var(--font-space-grotesk), "Space Grotesk", sans-serif;
+  --font-body: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace;
+  --font-label: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace;
+
+  --color-on-tertiary-container: #465c45;
+  --color-surface: #0d0f0c;
+  --color-tertiary-container: #d8f2d4;
+  --color-on-surface: #e1e7dd;
+  --color-secondary-container: #2e3f37;
+  --color-primary-fixed: #b6f398;
+  --color-primary-dim: #8ec872;
+  --color-secondary: #90a298;
+  --color-inverse-surface: #fafaf5;
+  --color-on-primary-container: #a5e087;
+  --color-surface-container: #171b16;
+  --color-on-tertiary-fixed: #394f39;
+  --color-secondary-fixed-dim: #c6d9cd;
+  --color-on-surface-variant: #a6ada3;
+  --color-background: #0d0f0c;
+  --color-surface-variant: #212721;
+  --color-on-primary: #174a01;
+  --color-surface-container-low: #111411;
+  --color-surface-container-high: #1c211b;
+  --color-outline-variant: #434a42;
+  --color-tertiary-fixed: #e0fbdc;
+  --color-on-secondary: #13231c;
+  --color-primary-fixed-dim: #a9e48b;
+  --color-on-error-container: #ff9b82;
+  --color-secondary-dim: #90a298;
+  --color-primary-container: #1e5107;
+  --color-on-tertiary: #4e654d;
+  --color-on-secondary-container: #b1c4b9;
+  --color-error: #ed7f64;
+  --color-tertiary-dim: #d5efd1;
+  --color-surface-dim: #0d0f0c;
+  --color-on-error: #450900;
+  --color-error-container: #7e2b17;
+  --color-on-primary-fixed: #164a00;
+  --color-primary: #9bd67e;
+  --color-surface-container-lowest: #000000;
+  --color-surface-container-highest: #212721;
+  --color-tertiary: #ebffe6;
+  --color-surface-tint: #9bd67e;
+  --color-on-background: #e1e7dd;
+  --color-on-secondary-fixed: #32433b;
+  --color-inverse-primary: #376b21;
+  --color-on-primary-fixed-variant: #33671d;
+  --color-inverse-on-surface: #545652;
+  --color-secondary-fixed: #d4e7db;
+  --color-tertiary-fixed-dim: #d2edce;
+  --color-on-tertiary-fixed-variant: #556c54;
+  --color-outline: #71776f;
+  --color-on-secondary-fixed-variant: #4e5f56;
+  --color-surface-bright: #272e26;
+  --color-error-dim: #ba573f;
 }
 
 * {
@@ -27,12 +69,9 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(155, 214, 126, 0.14), transparent 28%),
-    radial-gradient(circle at top right, rgba(216, 255, 127, 0.1), transparent 22%),
-    linear-gradient(180deg, #08110d 0%, #050a08 45%, #08110d 100%);
-  color: var(--foreground);
-  font-family: var(--font-space-grotesk), sans-serif;
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  font-family: var(--font-body);
 }
 
 a {
@@ -41,45 +80,48 @@ a {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
-.app-shell {
-  position: relative;
-  isolation: isolate;
+h1, h2, h3, h4, h5, h6, .font-headline {
+  font-family: var(--font-headline);
 }
 
-.app-shell::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 80px 80px;
-  mask-image: radial-gradient(circle at center, black, transparent 75%);
-  pointer-events: none;
-  opacity: 0.6;
-  z-index: -1;
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
 }
 
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
+.glass-header {
+  background: rgba(13, 15, 12, 0.6);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
 
-.muted {
-  color: var(--muted);
+::selection {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
-.mono {
-  font-family: var(--font-ibm-plex-mono), monospace;
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.ring-glow {
-  filter: drop-shadow(0 0 20px rgba(155, 214, 126, 0.22));
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
 }
 
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-variant);
+  border-radius: 10px;
+}
+
+/* Fallback styles to keep existing components slightly functional while we refactor them */
+.app-shell { position: relative; }
+.panel { background: var(--color-surface-container); border-radius: 1rem; }
+.bento-grid { display: grid; gap: 1.5rem; }
+.mono { font-family: var(--font-body); }
+.muted { color: var(--color-on-surface-variant); }

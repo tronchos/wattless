@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Download } from "lucide-react";
+import { Copy, Download, FileText } from "lucide-react";
 
 import { createMarkdownReport } from "@/lib/report-markdown";
 import type { GreenFixResponse, ScanReport } from "@/lib/types";
@@ -31,40 +31,37 @@ export function MarkdownReportCard({
   }
 
   return (
-    <section className="panel rounded-[2rem] p-6">
-      <p className="mono text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-        Reporte Markdown
-      </p>
-      <h2 className="mt-3 text-2xl font-medium tracking-[-0.05em] text-white">
-        Llévalo a un README o PR
-      </h2>
-      <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
-        Genera un reporte listo para compartir con jueces, equipo o comunidad
-        sin tocar el formato manualmente.
-      </p>
+    <section className="bg-surface-container-low rounded-[2rem] p-8 md:p-12 border border-outline-variant/5 mt-8">
+      <div className="max-w-3xl mx-auto space-y-8">
+        <div className="text-center">
+          <FileText className="w-12 h-12 text-primary mx-auto mb-4 opacity-80" />
+          <h2 className="text-3xl font-bold font-headline text-on-surface">Audit Summary</h2>
+          <p className="text-on-surface-variant mt-2 text-sm">
+            Download your sustainability report in markdown format.
+          </p>
+        </div>
 
-      <div className="mt-5 flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={copyMarkdown}
-          className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] px-4 py-2 text-sm text-white transition hover:border-[var(--line-strong)]"
-        >
-          <Copy className="h-4 w-4" />
-          Copiar Markdown
-        </button>
-        <button
-          type="button"
-          onClick={downloadMarkdown}
-          className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] px-4 py-2 text-sm text-white transition hover:border-[var(--line-strong)]"
-        >
-          <Download className="h-4 w-4" />
-          Descargar .md
-        </button>
+        <div className="bg-surface-container-highest/50 p-6 rounded-xl font-body text-sm text-on-surface-variant leading-loose border border-outline-variant/10 max-h-[400px] overflow-y-auto">
+          <pre className="whitespace-pre-wrap font-body text-xs">
+            {markdown}
+          </pre>
+        </div>
+
+        <div className="flex justify-center gap-4">
+          <button
+            onClick={copyMarkdown}
+            className="bg-surface-container-highest text-on-surface px-8 py-3 rounded-xl font-bold hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm"
+          >
+            <Copy className="w-4 h-4" /> Copy Markdown
+          </button>
+          <button
+            onClick={downloadMarkdown}
+            className="bg-primary text-on-primary px-8 py-3 rounded-xl font-bold hover:bg-primary-dim transition-colors flex items-center gap-2 shadow-lg shadow-primary/10 text-sm"
+          >
+            <Download className="w-4 h-4" /> Export MD
+          </button>
+        </div>
       </div>
-
-      <pre className="mt-5 max-h-[260px] overflow-auto rounded-[1.35rem] border border-[var(--line)] bg-[rgba(5,10,8,0.9)] p-4 text-xs leading-6 text-[var(--foreground)]">
-        <code>{markdown}</code>
-      </pre>
     </section>
   );
 }

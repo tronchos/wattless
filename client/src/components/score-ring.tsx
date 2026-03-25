@@ -1,12 +1,12 @@
 import { formatEntropyLabel } from "@/lib/api";
 
 const scoreProgress: Record<string, number> = {
-  A: 92,
-  B: 78,
-  C: 64,
-  D: 48,
-  E: 32,
-  F: 18,
+  A: 94,
+  B: 80,
+  C: 62,
+  D: 46,
+  E: 28,
+  F: 12,
 };
 
 interface ScoreRingProps {
@@ -15,61 +15,42 @@ interface ScoreRingProps {
 }
 
 export function ScoreRing({ score, grams }: ScoreRingProps) {
-  const progress = scoreProgress[score] ?? 0;
-  const radius = 84;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference - (progress / 100) * circumference;
   const entropyLabel = formatEntropyLabel(score);
+  const progress = scoreProgress[score] ?? 0;
 
   return (
-    <div className="panel flex flex-col rounded-[2rem] p-6">
-      <div className="mono text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
-        Score de carbono
-      </div>
-      <div className="relative mt-6 flex items-center justify-center">
-        <svg className="ring-glow h-56 w-56 -rotate-90" viewBox="0 0 220 220">
-          <circle
-            cx="110"
-            cy="110"
-            r={radius}
-            fill="none"
-            stroke="rgba(255,255,255,0.07)"
-            strokeWidth="18"
-          />
-          <circle
-            cx="110"
-            cy="110"
-            r={radius}
-            fill="none"
-            stroke="url(#scoreGradient)"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-            strokeLinecap="round"
-            strokeWidth="18"
-          />
-          <defs>
-            <linearGradient id="scoreGradient" x1="0%" x2="100%">
-              <stop offset="0%" stopColor="#9bd67e" />
-              <stop offset="100%" stopColor="#d8ff7f" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <div className="absolute text-center">
-          <div className="text-6xl font-medium tracking-[-0.08em] text-white">
-            {score}
-          </div>
-          <div className="mono mt-2 text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">
-            {entropyLabel}
-          </div>
-          <div className="mono mt-2 text-xs uppercase tracking-[0.22em] text-[var(--accent)]">
-            {grams}
-          </div>
+    <article className="bg-surface-container-low p-8 rounded-xl flex flex-col gap-2 group hover:bg-surface-container transition-colors">
+      <div className="flex justify-between w-full">
+        <span className="text-on-surface-variant text-xs uppercase tracking-widest font-label flex items-center gap-2">
+          Carbon Score
+        </span>
+        <div className="opacity-50 text-xs font-headline font-bold text-primary">
+          GRADE {score}
         </div>
       </div>
-      <p className="mt-4 text-center text-sm leading-6 text-[var(--muted)]">
-        Menos transferencia, menos terceros pesados y mejor infraestructura
-        reducen la entropía digital y hacen subir la nota.
+      
+      <div className="text-5xl font-headline font-bold text-primary mt-2 flex items-baseline gap-2">
+        {grams.split(" ")[0]}
+        <span className="text-2xl opacity-60 font-body">
+           {grams.split(" ").slice(1).join(" ")}
+        </span>
+      </div>
+
+      <p className="text-sm text-on-surface-variant mt-2 italic">
+        {entropyLabel}. Better than {progress}% of audited pages.
       </p>
-    </div>
+
+      <div className="w-full h-1.5 bg-surface-container-highest rounded-full mt-4 overflow-hidden">
+        <div
+          className="h-full bg-primary"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      
+      <p className="mt-4 text-sm leading-7 text-on-surface-variant/80">
+        Menos transferencia, menos bloqueo en el render y menos dependencia de
+        terceros empujan esta nota hacia arriba.
+      </p>
+    </article>
   );
 }
