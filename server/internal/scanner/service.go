@@ -62,6 +62,7 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 	if warnings == nil {
 		warnings = []string{}
 	}
+	resources, resourceGroups := enrichResourcesForAnalysis(resources, perf, screenshot.ViewportWidth, screenshot.ViewportHeight)
 
 	hostingResult, hostingWarnings := s.resolveHosting(ctx, hostname)
 	warnings = append(warnings, hostingWarnings...)
@@ -109,14 +110,31 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 				FailureReason:         resource.FailureReason,
 				TransferShare:         shareOf(resource.Bytes, totalBytes),
 				EstimatedSavingsBytes: savings,
+				PositionBand:          resource.PositionBand,
+				VisualRole:            resource.VisualRole,
+				DOMTag:                resource.DOMTag,
+				LoadingAttr:           resource.LoadingAttr,
+				FetchPriority:         resource.FetchPriority,
+				ResponsiveImage:       resource.ResponsiveImage,
+				IsThirdPartyTool:      resource.IsThirdPartyTool,
+				ThirdPartyKind:        resource.ThirdPartyKind,
 			}),
-			BoundingBox: resource.BoundingBox,
+			PositionBand:     resource.PositionBand,
+			VisualRole:       resource.VisualRole,
+			DOMTag:           resource.DOMTag,
+			LoadingAttr:      resource.LoadingAttr,
+			FetchPriority:    resource.FetchPriority,
+			ResponsiveImage:  resource.ResponsiveImage,
+			IsThirdPartyTool: resource.IsThirdPartyTool,
+			ThirdPartyKind:   resource.ThirdPartyKind,
+			BoundingBox:      resource.BoundingBox,
 		})
 	}
 
 	grams := co2.FromBytes(totalBytes)
 	breakdownByType, breakdownByParty := buildBreakdowns(resources, totalBytes)
 	summary := buildSummary(resources, totalBytes, potentialSavings, visualMapped)
+	analysis := buildAnalysis(resources, perf, resourceGroups)
 	finalScore := score.FromCO2(grams)
 
 	report := Report{
@@ -132,6 +150,7 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 		BreakdownByParty:      breakdownByParty,
 		VampireElements:       vampires,
 		Performance:           perf,
+		Analysis:              analysis,
 		Screenshot:            screenshot,
 		Methodology:           defaultMethodology(),
 		Warnings:              warnings,
@@ -146,11 +165,17 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 		HostingVerdict:        report.HostingVerdict,
 		HostedBy:              report.HostedBy,
 		Performance: insights.PerformanceContext{
-			LoadMS:             report.Performance.LoadMS,
-			DOMContentLoadedMS: report.Performance.DOMContentLoadedMS,
-			ScriptDurationMS:   report.Performance.ScriptDurationMS,
-			LCPMS:              report.Performance.LCPMS,
-			FCPMS:              report.Performance.FCPMS,
+			LoadMS:                   report.Performance.LoadMS,
+			DOMContentLoadedMS:       report.Performance.DOMContentLoadedMS,
+			ScriptResourceDurationMS: report.Performance.ScriptResourceDurationMS,
+			LCPMS:                    report.Performance.LCPMS,
+			FCPMS:                    report.Performance.FCPMS,
+			LongTasksTotalMS:         report.Performance.LongTasksTotalMS,
+			LongTasksCount:           report.Performance.LongTasksCount,
+			LCPResourceURL:           report.Performance.LCPResourceURL,
+			LCPResourceTag:           report.Performance.LCPResourceTag,
+			LCPSelectorHint:          report.Performance.LCPSelectorHint,
+			LCPSize:                  report.Performance.LCPSize,
 		},
 		Summary: insights.SummaryContext{
 			TotalRequests:         report.Summary.TotalRequests,
@@ -161,6 +186,7 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 			PotentialSavingsBytes: report.Summary.PotentialSavingsBytes,
 			VisualMappedVampires:  report.Summary.VisualMappedVampires,
 		},
+		Analysis:     makeInsightAnalysis(report.Analysis),
 		TopResources: makeInsightResources(vampires),
 	})
 	if err != nil {
@@ -176,17 +202,26 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 }
 
 type enrichedResource struct {
-	ID            string
-	URL           string
-	Type          string
-	MIMEType      string
-	Hostname      string
-	Party         string
-	StatusCode    int
-	Bytes         int64
-	Failed        bool
-	FailureReason string
-	BoundingBox   *BoundingBox
+	ID               string
+	URL              string
+	Type             string
+	MIMEType         string
+	Hostname         string
+	Party            string
+	StatusCode       int
+	Bytes            int64
+	Failed           bool
+	FailureReason    string
+	BoundingBox      *BoundingBox
+	DOMTag           string
+	LoadingAttr      string
+	FetchPriority    string
+	ResponsiveImage  bool
+	SelectorHint     string
+	PositionBand     string
+	VisualRole       string
+	IsThirdPartyTool bool
+	ThirdPartyKind   string
 }
 
 type documentMetrics struct {
@@ -393,18 +428,33 @@ func (s *Service) runBrowserScan(ctx context.Context, targetURL string) ([]enric
 		if resource.Bytes <= 0 && !resource.Failed && resource.StatusCode < 400 {
 			continue
 		}
+		matchedElement := matchDOMElement(resource.URL, elements)
+		var boundingBox *BoundingBox
+		if matchedElement != nil {
+			boundingBox = &BoundingBox{
+				X:      matchedElement.X,
+				Y:      matchedElement.Y,
+				Width:  matchedElement.Width,
+				Height: matchedElement.Height,
+			}
+		}
 		enriched = append(enriched, enrichedResource{
-			ID:            resource.RequestID,
-			URL:           resource.URL,
-			Type:          resource.Type,
-			MIMEType:      resource.MIMEType,
-			Hostname:      resourceHostname(resource.URL),
-			Party:         classifyParty(pageHostname, resourceHostname(resource.URL)),
-			StatusCode:    resource.StatusCode,
-			Bytes:         resource.Bytes,
-			Failed:        resource.Failed,
-			FailureReason: resource.FailureReason,
-			BoundingBox:   matchBoundingBox(resource.URL, elements),
+			ID:              resource.RequestID,
+			URL:             resource.URL,
+			Type:            resource.Type,
+			MIMEType:        resource.MIMEType,
+			Hostname:        resourceHostname(resource.URL),
+			Party:           classifyParty(pageHostname, resourceHostname(resource.URL)),
+			StatusCode:      resource.StatusCode,
+			Bytes:           resource.Bytes,
+			Failed:          resource.Failed,
+			FailureReason:   resource.FailureReason,
+			BoundingBox:     boundingBox,
+			DOMTag:          stringValue(matchedElement, func(element *domElement) string { return element.Tag }),
+			LoadingAttr:     stringValue(matchedElement, func(element *domElement) string { return element.LoadingAttr }),
+			FetchPriority:   stringValue(matchedElement, func(element *domElement) string { return element.FetchPriority }),
+			ResponsiveImage: boolValue(matchedElement, func(element *domElement) bool { return element.ResponsiveImage }),
+			SelectorHint:    stringValue(matchedElement, func(element *domElement) string { return element.SelectorHint }),
 		})
 		box := enriched[len(enriched)-1].BoundingBox
 		if box != nil && box.Y >= float64(plan.CapturedHeight) {
@@ -450,14 +500,20 @@ func capturePerformance(page *rod.Page) (PerformanceMetrics, error) {
 		return JSON.stringify({
 			load_ms: navigation ? Math.round(navigation.loadEventEnd) : 0,
 			dom_content_loaded_ms: navigation ? Math.round(navigation.domContentLoadedEventEnd) : 0,
-			script_duration_ms: Math.round(
+			script_resource_duration_ms: Math.round(
 				performance
 					.getEntriesByType("resource")
 					.filter((entry) => entry.initiatorType === "script")
 					.reduce((acc, entry) => acc + (entry.duration || 0), 0)
 			),
 			lcp_ms: Math.round(buffered.lcp_ms || (lastLCP ? lastLCP.startTime || 0 : 0)),
-			fcp_ms: Math.round(buffered.fcp_ms || (fcp ? fcp.startTime || 0 : 0))
+			fcp_ms: Math.round(buffered.fcp_ms || (fcp ? fcp.startTime || 0 : 0)),
+			long_tasks_total_ms: Math.round(buffered.long_tasks_total_ms || 0),
+			long_tasks_count: Math.round(buffered.long_tasks_count || 0),
+			lcp_resource_url: buffered.lcp_resource_url || (lastLCP && lastLCP.url ? lastLCP.url : ""),
+			lcp_resource_tag: buffered.lcp_resource_tag || "",
+			lcp_selector_hint: buffered.lcp_selector_hint || "",
+			lcp_size: Math.round(buffered.lcp_size || (lastLCP && lastLCP.size ? lastLCP.size : 0))
 		});
 	}`))
 	if err != nil {
@@ -477,9 +533,29 @@ func performanceObserverScript() string {
 			return;
 		}
 
+		const selectorHint = (element) => {
+			if (!element || !element.tagName) {
+				return "";
+			}
+			if (element.id) {
+				return "#" + element.id;
+			}
+			const className = typeof element.className === "string" ? element.className.trim().split(/\s+/).slice(0, 2).join(".") : "";
+			if (className) {
+				return element.tagName.toLowerCase() + "." + className;
+			}
+			return element.tagName.toLowerCase();
+		};
+
 		const metrics = {
 			lcp_ms: 0,
-			fcp_ms: 0
+			fcp_ms: 0,
+			lcp_resource_url: "",
+			lcp_resource_tag: "",
+			lcp_selector_hint: "",
+			lcp_size: 0,
+			long_tasks_total_ms: 0,
+			long_tasks_count: 0
 		};
 		window.__wattlessMetrics = metrics;
 
@@ -489,6 +565,16 @@ func performanceObserverScript() string {
 				const lastEntry = entries[entries.length - 1];
 				if (lastEntry) {
 					metrics.lcp_ms = Math.round(lastEntry.startTime || 0);
+					metrics.lcp_size = Math.round(lastEntry.size || 0);
+					if (lastEntry.url) {
+						metrics.lcp_resource_url = lastEntry.url;
+					}
+					const element = lastEntry.element;
+					if (element) {
+						metrics.lcp_resource_url = element.currentSrc || element.src || metrics.lcp_resource_url || "";
+						metrics.lcp_resource_tag = (element.tagName || "").toLowerCase();
+						metrics.lcp_selector_hint = selectorHint(element);
+					}
 				}
 			}).observe({ type: "largest-contentful-paint", buffered: true });
 		} catch {}
@@ -501,6 +587,15 @@ func performanceObserverScript() string {
 					}
 				}
 			}).observe({ type: "paint", buffered: true });
+		} catch {}
+
+		try {
+			new PerformanceObserver((entryList) => {
+				for (const entry of entryList.getEntries()) {
+					metrics.long_tasks_total_ms += Math.round(entry.duration || 0);
+					metrics.long_tasks_count += 1;
+				}
+			}).observe({ type: "longtask", buffered: true });
 		} catch {}
 	})()`
 }
@@ -701,6 +796,13 @@ func collectElementBoxes(page *rod.Page) ([]domElement, error) {
 	result, err := page.Evaluate(rod.Eval(`() => {
 		const seen = new Map();
 		const selectors = ["img", "video", "iframe", "source"];
+		const selectorHint = (node) => {
+			if (!node || !node.tagName) return "";
+			if (node.id) return "#" + node.id;
+			const className = typeof node.className === "string" ? node.className.trim().split(/\s+/).slice(0, 2).join(".") : "";
+			if (className) return node.tagName.toLowerCase() + "." + className;
+			return node.tagName.toLowerCase();
+		};
 		for (const selector of selectors) {
 			for (const node of document.querySelectorAll(selector)) {
 				const rect = node.getBoundingClientRect();
@@ -709,6 +811,11 @@ func collectElementBoxes(page *rod.Page) ([]domElement, error) {
 				if (!seen.has(url)) {
 					seen.set(url, {
 						url,
+						tag: (node.tagName || "").toLowerCase(),
+						loading: node.getAttribute("loading") || "",
+						fetch_priority: node.getAttribute("fetchpriority") || "",
+						responsive_image: Boolean(node.getAttribute("srcset") || node.getAttribute("sizes")),
+						selector_hint: selectorHint(node),
 						x: Math.round(rect.left + window.scrollX),
 						y: Math.round(rect.top + window.scrollY),
 						width: Math.round(rect.width),
@@ -731,14 +838,22 @@ func collectElementBoxes(page *rod.Page) ([]domElement, error) {
 }
 
 func matchBoundingBox(resourceURL string, elements []domElement) *BoundingBox {
-	for _, element := range elements {
-		if sameAsset(resourceURL, element.URL) {
-			return &BoundingBox{
-				X:      element.X,
-				Y:      element.Y,
-				Width:  element.Width,
-				Height: element.Height,
-			}
+	element := matchDOMElement(resourceURL, elements)
+	if element == nil {
+		return nil
+	}
+	return &BoundingBox{
+		X:      element.X,
+		Y:      element.Y,
+		Width:  element.Width,
+		Height: element.Height,
+	}
+}
+
+func matchDOMElement(resourceURL string, elements []domElement) *domElement {
+	for index := range elements {
+		if sameAsset(resourceURL, elements[index].URL) {
+			return &elements[index]
 		}
 	}
 	return nil
@@ -808,7 +923,78 @@ func makeInsightResources(resources []ResourceSummary) []insights.ResourceContex
 			TransferShare:         resource.TransferShare,
 			EstimatedSavingsBytes: resource.EstimatedSavingsBytes,
 			Recommendation:        resource.Recommendation,
+			PositionBand:          resource.PositionBand,
+			VisualRole:            resource.VisualRole,
+			DOMTag:                resource.DOMTag,
+			LoadingAttr:           resource.LoadingAttr,
+			FetchPriority:         resource.FetchPriority,
+			ResponsiveImage:       resource.ResponsiveImage,
+			IsThirdPartyTool:      resource.IsThirdPartyTool,
+			ThirdPartyKind:        resource.ThirdPartyKind,
 		})
 	}
 	return output
+}
+
+func makeInsightAnalysis(analysis Analysis) insights.AnalysisContext {
+	findings := make([]insights.AnalysisFindingContext, 0, len(analysis.Findings))
+	for _, finding := range analysis.Findings {
+		findings = append(findings, insights.AnalysisFindingContext{
+			ID:                    finding.ID,
+			Category:              finding.Category,
+			Severity:              finding.Severity,
+			Confidence:            finding.Confidence,
+			Title:                 finding.Title,
+			Summary:               finding.Summary,
+			Evidence:              append([]string(nil), finding.Evidence...),
+			EstimatedSavingsBytes: finding.EstimatedSavingsBytes,
+			RelatedResourceIDs:    append([]string(nil), finding.RelatedResourceIDs...),
+		})
+	}
+
+	groups := make([]insights.ResourceGroupContext, 0, len(analysis.ResourceGroups))
+	for _, group := range analysis.ResourceGroups {
+		groups = append(groups, insights.ResourceGroupContext{
+			ID:                 group.ID,
+			Kind:               group.Kind,
+			Label:              group.Label,
+			TotalBytes:         group.TotalBytes,
+			ResourceCount:      group.ResourceCount,
+			PositionBand:       group.PositionBand,
+			RelatedResourceIDs: append([]string(nil), group.RelatedResourceIDs...),
+		})
+	}
+
+	return insights.AnalysisContext{
+		Summary: insights.AnalysisSummaryContext{
+			AboveFoldBytes:       analysis.Summary.AboveFoldBytes,
+			BelowFoldBytes:       analysis.Summary.BelowFoldBytes,
+			LCPResourceID:        analysis.Summary.LCPResourceID,
+			LCPResourceURL:       analysis.Summary.LCPResourceURL,
+			LCPResourceBytes:     analysis.Summary.LCPResourceBytes,
+			AnalyticsBytes:       analysis.Summary.AnalyticsBytes,
+			AnalyticsRequests:    analysis.Summary.AnalyticsRequests,
+			FontBytes:            analysis.Summary.FontBytes,
+			FontRequests:         analysis.Summary.FontRequests,
+			RepeatedGalleryBytes: analysis.Summary.RepeatedGalleryBytes,
+			RepeatedGalleryCount: analysis.Summary.RepeatedGalleryCount,
+			RenderCriticalBytes:  analysis.Summary.RenderCriticalBytes,
+		},
+		Findings:       findings,
+		ResourceGroups: groups,
+	}
+}
+
+func stringValue[T any](value *T, project func(*T) string) string {
+	if value == nil {
+		return ""
+	}
+	return project(value)
+}
+
+func boolValue[T any](value *T, project func(*T) bool) bool {
+	if value == nil {
+		return false
+	}
+	return project(value)
 }

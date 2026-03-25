@@ -52,3 +52,174 @@ func TestBuildSummaryCountsNetworkFailuresWithoutStatusCodes(t *testing.T) {
 		t.Fatalf("expected 1 successful request, got %d", summary.SuccessfulRequests)
 	}
 }
+
+func TestClassifyPositionBand(t *testing.T) {
+	if got := classifyPositionBand(&BoundingBox{Y: 100}, 900); got != positionAboveFold {
+		t.Fatalf("expected above fold, got %s", got)
+	}
+	if got := classifyPositionBand(&BoundingBox{Y: 1200}, 900); got != positionNearFold {
+		t.Fatalf("expected near fold, got %s", got)
+	}
+	if got := classifyPositionBand(&BoundingBox{Y: 2400}, 900); got != positionBelowFold {
+		t.Fatalf("expected below fold, got %s", got)
+	}
+}
+
+func TestClassifyThirdPartyKindDetectsAnalytics(t *testing.T) {
+	resource := enrichedResource{
+		URL:      "https://us.i.posthog.com/static/array.js",
+		Hostname: "us.i.posthog.com",
+		Party:    partyThird,
+	}
+
+	if got := classifyThirdPartyKind(resource); got != thirdPartyAnalytics {
+		t.Fatalf("expected analytics, got %s", got)
+	}
+}
+
+func TestEnrichResourcesForAnalysisAssignsSemanticRoles(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:          "hero",
+			URL:         "https://example.com/hero.webp",
+			Type:        "image",
+			Hostname:    "example.com",
+			Party:       partyFirst,
+			Bytes:       340_000,
+			BoundingBox: &BoundingBox{X: 0, Y: 0, Width: 960, Height: 420},
+		},
+		{
+			ID:          "card-1",
+			URL:         "https://example.com/courses/course-1.webp",
+			Type:        "image",
+			Hostname:    "example.com",
+			Party:       partyFirst,
+			Bytes:       180_000,
+			BoundingBox: &BoundingBox{X: 0, Y: 1100, Width: 320, Height: 180},
+		},
+		{
+			ID:          "card-2",
+			URL:         "https://example.com/courses/course-2.webp",
+			Type:        "image",
+			Hostname:    "example.com",
+			Party:       partyFirst,
+			Bytes:       170_000,
+			BoundingBox: &BoundingBox{X: 340, Y: 1120, Width: 320, Height: 180},
+		},
+		{
+			ID:          "card-3",
+			URL:         "https://example.com/courses/course-3.webp",
+			Type:        "image",
+			Hostname:    "example.com",
+			Party:       partyFirst,
+			Bytes:       165_000,
+			BoundingBox: &BoundingBox{X: 680, Y: 1150, Width: 320, Height: 180},
+		},
+	}
+
+	annotated, groups := enrichResourcesForAnalysis(resources, PerformanceMetrics{
+		LCPResourceURL: "https://example.com/hero.webp",
+	}, 1440, 900)
+
+	if annotated[0].VisualRole != visualRoleLCPCandidate {
+		t.Fatalf("expected lcp candidate, got %s", annotated[0].VisualRole)
+	}
+	if annotated[1].VisualRole != visualRoleRepeatedCard {
+		t.Fatalf("expected repeated card media, got %s", annotated[1].VisualRole)
+	}
+	if len(groups) == 0 || groups[0].Kind != groupKindRepeatedGallery {
+		t.Fatalf("expected repeated gallery group, got %#v", groups)
+	}
+}
+
+func TestBuildAnalysisCreatesFindingsFromEvidence(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:           "hero",
+			URL:          "https://example.com/hero.webp",
+			Type:         "image",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        340_000,
+			BoundingBox:  &BoundingBox{X: 0, Y: 0, Width: 960, Height: 420},
+			PositionBand: positionAboveFold,
+			VisualRole:   visualRoleLCPCandidate,
+		},
+		{
+			ID:               "analytics",
+			URL:              "https://us.i.posthog.com/static/array.js",
+			Type:             "script",
+			Hostname:         "us.i.posthog.com",
+			Party:            partyThird,
+			Bytes:            95_000,
+			IsThirdPartyTool: true,
+			ThirdPartyKind:   thirdPartyAnalytics,
+			PositionBand:     positionUnknown,
+		},
+		{
+			ID:           "font-1",
+			URL:          "https://example.com/fonts/brand.woff2",
+			Type:         "font",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        150_000,
+			PositionBand: positionUnknown,
+		},
+		{
+			ID:           "font-2",
+			URL:          "https://example.com/fonts/brand-bold.woff2",
+			Type:         "font",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        130_000,
+			PositionBand: positionUnknown,
+		},
+	}
+
+	analysis := buildAnalysis(resources, PerformanceMetrics{
+		LCPMS:                    2400,
+		LCPResourceURL:           "https://example.com/hero.webp",
+		LCPResourceTag:           "img",
+		ScriptResourceDurationMS: 420,
+		LongTasksTotalMS:         410,
+		LongTasksCount:           3,
+	}, []ResourceGroup{
+		{
+			ID:                 "group-analytics",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster de analítica",
+			TotalBytes:         95_000,
+			ResourceCount:      1,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"analytics"},
+		},
+	})
+
+	if len(analysis.Findings) == 0 {
+		t.Fatal("expected findings")
+	}
+	if analysis.Summary.LCPResourceID != "hero" {
+		t.Fatalf("expected lcp resource hero, got %s", analysis.Summary.LCPResourceID)
+	}
+	if !hasFinding(analysis.Findings, "render_lcp_candidate") {
+		t.Fatal("expected lcp finding")
+	}
+	if !hasFinding(analysis.Findings, "third_party_analytics_overhead") {
+		t.Fatal("expected analytics finding")
+	}
+	if !hasFinding(analysis.Findings, "font_stack_overweight") {
+		t.Fatal("expected font finding")
+	}
+	if !hasFinding(analysis.Findings, "main_thread_pressure") {
+		t.Fatal("expected main thread finding")
+	}
+}
+
+func hasFinding(findings []AnalysisFinding, id string) bool {
+	for _, finding := range findings {
+		if finding.ID == id {
+			return true
+		}
+	}
+	return false
+}

@@ -15,6 +15,31 @@ import (
 const (
 	partyFirst = "first_party"
 	partyThird = "third_party"
+
+	positionAboveFold = "above_fold"
+	positionNearFold  = "near_fold"
+	positionBelowFold = "below_fold"
+	positionUnknown   = "unknown"
+
+	visualRoleLCPCandidate   = "lcp_candidate"
+	visualRoleHeroMedia      = "hero_media"
+	visualRoleRepeatedCard   = "repeated_card_media"
+	visualRoleAboveFoldMedia = "above_fold_media"
+	visualRoleBelowFoldMedia = "below_fold_media"
+	visualRoleDecorative     = "decorative"
+	visualRoleUnknown        = "unknown"
+
+	groupKindRepeatedGallery = "repeated_gallery"
+	groupKindThirdParty      = "third_party_cluster"
+	groupKindFontCluster     = "font_cluster"
+
+	thirdPartyAnalytics = "analytics"
+	thirdPartyAds       = "ads"
+	thirdPartySupport   = "support"
+	thirdPartySocial    = "social"
+	thirdPartyVideo     = "video_embed"
+	thirdPartyPayment   = "payment"
+	thirdPartyUnknown   = "unknown"
 )
 
 func normalizeType(resourceType, mimeType, rawURL string) string {
@@ -116,6 +141,585 @@ func estimateSavingsBytes(resourceType string, bytes int64) int64 {
 	return int64(math.Round(float64(bytes) * factor))
 }
 
+func enrichResourcesForAnalysis(resources []enrichedResource, perf PerformanceMetrics, viewportWidth, viewportHeight int) ([]enrichedResource, []ResourceGroup) {
+	annotated := append([]enrichedResource(nil), resources...)
+	for index := range annotated {
+		annotated[index].PositionBand = classifyPositionBand(annotated[index].BoundingBox, viewportHeight)
+		annotated[index].ThirdPartyKind = classifyThirdPartyKind(annotated[index])
+		annotated[index].IsThirdPartyTool = annotated[index].Party == partyThird && annotated[index].ThirdPartyKind != thirdPartyUnknown
+	}
+
+	groups := buildResourceGroups(annotated, viewportHeight)
+	repeatedGalleryMembers := make(map[string]struct{})
+	for _, group := range groups {
+		if group.Kind != groupKindRepeatedGallery {
+			continue
+		}
+		for _, resourceID := range group.RelatedResourceIDs {
+			repeatedGalleryMembers[resourceID] = struct{}{}
+		}
+	}
+
+	for index := range annotated {
+		annotated[index].VisualRole = classifyVisualRole(annotated[index], perf, viewportWidth, viewportHeight, repeatedGalleryMembers)
+	}
+
+	return annotated, groups
+}
+
+func classifyPositionBand(box *BoundingBox, viewportHeight int) string {
+	if box == nil || viewportHeight <= 0 {
+		return positionUnknown
+	}
+	switch {
+	case box.Y < float64(viewportHeight):
+		return positionAboveFold
+	case box.Y < float64(viewportHeight*2):
+		return positionNearFold
+	default:
+		return positionBelowFold
+	}
+}
+
+func classifyThirdPartyKind(resource enrichedResource) string {
+	if resource.Party != partyThird {
+		return thirdPartyUnknown
+	}
+
+	haystack := strings.ToLower(resource.Hostname + " " + resource.URL)
+	switch {
+	case containsAny(haystack, "posthog", "segment", "mixpanel", "plausible", "clarity", "amplitude", "ahrefs", "google-analytics", "googletagmanager", "gtm.js"):
+		return thirdPartyAnalytics
+	case containsAny(haystack, "doubleclick", "ads", "adservice", "googleadservices"):
+		return thirdPartyAds
+	case containsAny(haystack, "intercom", "zendesk", "drift", "crisp", "helpscout"):
+		return thirdPartySupport
+	case containsAny(haystack, "facebook", "twitter", "x.com", "linkedin", "tiktok", "instagram"):
+		return thirdPartySocial
+	case containsAny(haystack, "youtube", "youtu.be", "vimeo", "loom"):
+		return thirdPartyVideo
+	case containsAny(haystack, "stripe", "paypal", "mercadopago", "checkout"):
+		return thirdPartyPayment
+	default:
+		return thirdPartyUnknown
+	}
+}
+
+func containsAny(value string, tokens ...string) bool {
+	for _, token := range tokens {
+		if strings.Contains(value, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func classifyVisualRole(resource enrichedResource, perf PerformanceMetrics, viewportWidth, viewportHeight int, repeatedGalleryMembers map[string]struct{}) string {
+	if perf.LCPResourceURL != "" && sameAsset(resource.URL, perf.LCPResourceURL) {
+		return visualRoleLCPCandidate
+	}
+
+	if !isVisualResource(resource) {
+		return visualRoleUnknown
+	}
+
+	if resource.BoundingBox == nil {
+		return visualRoleUnknown
+	}
+
+	area := resource.BoundingBox.Width * resource.BoundingBox.Height
+	viewportArea := float64(maxInt(viewportWidth, 1) * maxInt(viewportHeight, 1))
+
+	if resource.PositionBand == positionAboveFold &&
+		resource.BoundingBox.Width >= float64(viewportWidth)*0.40 &&
+		area >= viewportArea*0.20 {
+		return visualRoleHeroMedia
+	}
+
+	if resource.Type == "image" && (resource.PositionBand == positionNearFold || resource.PositionBand == positionBelowFold) {
+		if _, ok := repeatedGalleryMembers[resource.ID]; ok {
+			return visualRoleRepeatedCard
+		}
+	}
+
+	if resource.PositionBand == positionAboveFold {
+		return visualRoleAboveFoldMedia
+	}
+
+	if resource.PositionBand == positionNearFold || resource.PositionBand == positionBelowFold {
+		return visualRoleBelowFoldMedia
+	}
+
+	if viewportArea > 0 && area < viewportArea*0.01 {
+		return visualRoleDecorative
+	}
+
+	return visualRoleUnknown
+}
+
+func isVisualResource(resource enrichedResource) bool {
+	return resource.Type == "image" || resource.Type == "video"
+}
+
+func buildResourceGroups(resources []enrichedResource, viewportHeight int) []ResourceGroup {
+	groups := make([]ResourceGroup, 0)
+	repeatedGroups := map[string][]enrichedResource{}
+
+	for _, resource := range resources {
+		if resource.Type != "image" || resource.BoundingBox == nil {
+			continue
+		}
+		key := repeatedGalleryKey(resource)
+		if key == "" {
+			continue
+		}
+		repeatedGroups[key] = append(repeatedGroups[key], resource)
+	}
+
+	for key, members := range repeatedGroups {
+		if len(members) < 3 {
+			continue
+		}
+		group := ResourceGroup{
+			ID:                 "group-" + sanitizeGroupID(key),
+			Kind:               groupKindRepeatedGallery,
+			Label:              repeatedGalleryLabel(members, viewportHeight),
+			TotalBytes:         sumBytes(members),
+			ResourceCount:      len(members),
+			PositionBand:       summarizePositionBand(members),
+			RelatedResourceIDs: collectResourceIDs(members),
+		}
+		groups = append(groups, group)
+	}
+
+	fonts := filterResources(resources, func(resource enrichedResource) bool {
+		return resource.Type == "font"
+	})
+	if len(fonts) >= 2 {
+		groups = append(groups, ResourceGroup{
+			ID:                 "group-font-stack",
+			Kind:               groupKindFontCluster,
+			Label:              "Stack tipográfico",
+			TotalBytes:         sumBytes(fonts),
+			ResourceCount:      len(fonts),
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: collectResourceIDs(fonts),
+		})
+	}
+
+	thirdPartyByKind := map[string][]enrichedResource{}
+	for _, resource := range resources {
+		if !resource.IsThirdPartyTool {
+			continue
+		}
+		thirdPartyByKind[resource.ThirdPartyKind] = append(thirdPartyByKind[resource.ThirdPartyKind], resource)
+	}
+	for kind, members := range thirdPartyByKind {
+		if len(members) == 0 {
+			continue
+		}
+		groups = append(groups, ResourceGroup{
+			ID:                 "group-third-party-" + sanitizeGroupID(kind),
+			Kind:               groupKindThirdParty,
+			Label:              thirdPartyGroupLabel(kind),
+			TotalBytes:         sumBytes(members),
+			ResourceCount:      len(members),
+			PositionBand:       summarizePositionBand(members),
+			RelatedResourceIDs: collectResourceIDs(members),
+		})
+	}
+
+	sort.Slice(groups, func(i, j int) bool {
+		if groups[i].TotalBytes == groups[j].TotalBytes {
+			return groups[i].ID < groups[j].ID
+		}
+		return groups[i].TotalBytes > groups[j].TotalBytes
+	})
+
+	return groups
+}
+
+func repeatedGalleryKey(resource enrichedResource) string {
+	if resource.BoundingBox == nil {
+		return ""
+	}
+	dir := semanticPathPrefix(resource.URL)
+	if dir == "" {
+		return ""
+	}
+	widthBucket := int(math.Round(resource.BoundingBox.Width / 48))
+	heightBucket := int(math.Round(resource.BoundingBox.Height / 48))
+	return fmt.Sprintf("%s|%s|%d|%d", resource.Hostname, dir, widthBucket, heightBucket)
+}
+
+func semanticPathPrefix(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	dir := path.Dir(parsed.Path)
+	segments := strings.Split(strings.Trim(dir, "/"), "/")
+	if len(segments) == 0 || segments[0] == "" {
+		return "/"
+	}
+	if len(segments) == 1 {
+		return "/" + segments[0]
+	}
+	return "/" + strings.Join(segments[:2], "/")
+}
+
+func sanitizeGroupID(value string) string {
+	value = strings.ToLower(value)
+	value = strings.NewReplacer("/", "-", "|", "-", ".", "-", " ", "-").Replace(value)
+	value = strings.Trim(value, "-")
+	if value == "" {
+		return "group"
+	}
+	return value
+}
+
+func repeatedGalleryLabel(resources []enrichedResource, viewportHeight int) string {
+	belowFold := 0
+	for _, resource := range resources {
+		if classifyPositionBand(resource.BoundingBox, viewportHeight) == positionBelowFold {
+			belowFold++
+		}
+	}
+	switch {
+	case len(resources) >= 4 && belowFold >= len(resources)/2:
+		return "Colección de miniaturas"
+	case len(resources) >= 3:
+		return "Grid de tarjetas"
+	default:
+		return "Galería repetida de imágenes"
+	}
+}
+
+func thirdPartyGroupLabel(kind string) string {
+	switch kind {
+	case thirdPartyAnalytics:
+		return "Cluster de analítica"
+	case thirdPartyAds:
+		return "Cluster de anuncios"
+	case thirdPartySupport:
+		return "Cluster de soporte"
+	case thirdPartySocial:
+		return "Cluster social"
+	case thirdPartyVideo:
+		return "Embeds de video"
+	case thirdPartyPayment:
+		return "Cluster de pagos"
+	default:
+		return "Terceros"
+	}
+}
+
+func summarizePositionBand(resources []enrichedResource) string {
+	counts := map[string]int{}
+	for _, resource := range resources {
+		counts[resource.PositionBand]++
+	}
+	if len(counts) == 0 {
+		return positionUnknown
+	}
+	if len(counts) == 1 {
+		for band := range counts {
+			return band
+		}
+	}
+	maxBand := positionUnknown
+	maxCount := 0
+	for band, count := range counts {
+		if count > maxCount {
+			maxBand = band
+			maxCount = count
+		}
+	}
+	if maxCount >= len(resources)-1 {
+		return maxBand
+	}
+	return "mixed"
+}
+
+func buildAnalysis(resources []enrichedResource, perf PerformanceMetrics, groups []ResourceGroup) Analysis {
+	summary := AnalysisSummary{}
+
+	for _, resource := range resources {
+		switch resource.PositionBand {
+		case positionAboveFold:
+			summary.AboveFoldBytes += resource.Bytes
+		case positionNearFold, positionBelowFold:
+			summary.BelowFoldBytes += resource.Bytes
+		}
+
+		if resource.Type == "font" {
+			summary.FontBytes += resource.Bytes
+			summary.FontRequests++
+		}
+		if resource.IsThirdPartyTool && resource.ThirdPartyKind == thirdPartyAnalytics {
+			summary.AnalyticsBytes += resource.Bytes
+			summary.AnalyticsRequests++
+		}
+		if resource.VisualRole == visualRoleLCPCandidate || resource.VisualRole == visualRoleHeroMedia || resource.VisualRole == visualRoleAboveFoldMedia {
+			summary.RenderCriticalBytes += resource.Bytes
+		}
+		if resource.Type == "font" || resource.Type == "stylesheet" {
+			summary.RenderCriticalBytes += resource.Bytes
+		}
+	}
+
+	var lcpResource *enrichedResource
+	for index := range resources {
+		if perf.LCPResourceURL != "" && sameAsset(resources[index].URL, perf.LCPResourceURL) {
+			lcpResource = &resources[index]
+			break
+		}
+	}
+	if lcpResource != nil {
+		summary.LCPResourceID = lcpResource.ID
+		summary.LCPResourceURL = lcpResource.URL
+		summary.LCPResourceBytes = lcpResource.Bytes
+	} else {
+		summary.LCPResourceURL = perf.LCPResourceURL
+	}
+
+	for _, group := range groups {
+		if group.Kind != groupKindRepeatedGallery {
+			continue
+		}
+		summary.RepeatedGalleryBytes += group.TotalBytes
+		summary.RepeatedGalleryCount += group.ResourceCount
+	}
+
+	findings := make([]AnalysisFinding, 0, 6)
+	if finding := buildLCPFinding(lcpResource, perf); finding != nil {
+		findings = append(findings, *finding)
+	}
+	if finding := buildMainThreadFinding(resources, perf); finding != nil {
+		findings = append(findings, *finding)
+	}
+	if finding := buildRepeatedGalleryFinding(groups, resources); finding != nil {
+		findings = append(findings, *finding)
+	}
+	if finding := buildThirdPartyFinding(resources, summary); finding != nil {
+		findings = append(findings, *finding)
+	}
+	if finding := buildFontFinding(resources, summary); finding != nil {
+		findings = append(findings, *finding)
+	}
+	if finding := buildHeavyAboveFoldFinding(resources, perf, summary.LCPResourceID); finding != nil {
+		findings = append(findings, *finding)
+	}
+
+	sort.Slice(findings, func(i, j int) bool {
+		if findingSeverityRank(findings[i].Severity) == findingSeverityRank(findings[j].Severity) {
+			if findingConfidenceRank(findings[i].Confidence) == findingConfidenceRank(findings[j].Confidence) {
+				if findings[i].EstimatedSavingsBytes == findings[j].EstimatedSavingsBytes {
+					return findings[i].ID < findings[j].ID
+				}
+				return findings[i].EstimatedSavingsBytes > findings[j].EstimatedSavingsBytes
+			}
+			return findingConfidenceRank(findings[i].Confidence) > findingConfidenceRank(findings[j].Confidence)
+		}
+		return findingSeverityRank(findings[i].Severity) > findingSeverityRank(findings[j].Severity)
+	})
+
+	return Analysis{
+		Summary:        summary,
+		Findings:       findings,
+		ResourceGroups: groups,
+	}
+}
+
+func buildLCPFinding(resource *enrichedResource, perf PerformanceMetrics) *AnalysisFinding {
+	if resource == nil || resource.Bytes < 150_000 {
+		return nil
+	}
+
+	severity := "medium"
+	if perf.LCPMS >= 2_000 {
+		severity = "high"
+	}
+
+	evidence := []string{
+		fmt.Sprintf("El recurso que coincide con el LCP pesa %s.", humanBytes(resource.Bytes)),
+		fmt.Sprintf("LCP observado: %d ms.", perf.LCPMS),
+	}
+	if resource.PositionBand != "" && resource.PositionBand != positionUnknown {
+		evidence = append(evidence, fmt.Sprintf("Su posición es %s.", strings.ReplaceAll(resource.PositionBand, "_", " ")))
+	}
+	if perf.LCPResourceTag != "" {
+		evidence = append(evidence, fmt.Sprintf("El nodo LCP es <%s>.", perf.LCPResourceTag))
+	}
+
+	return &AnalysisFinding{
+		ID:                    "render_lcp_candidate",
+		Category:              "render",
+		Severity:              severity,
+		Confidence:            "high",
+		Title:                 "Ataca el recurso que domina el LCP",
+		Summary:               fmt.Sprintf("La carga crítica está anclada a un recurso de %s. Es el mejor punto de ataque para recortar el render inicial sin tocar el resto del documento.", humanBytes(resource.Bytes)),
+		Evidence:              evidence,
+		EstimatedSavingsBytes: estimateSavingsBytes(resource.Type, resource.Bytes),
+		RelatedResourceIDs:    []string{resource.ID},
+	}
+}
+
+func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedResource) *AnalysisFinding {
+	var candidate *ResourceGroup
+	for index := range groups {
+		group := &groups[index]
+		if group.Kind != groupKindRepeatedGallery || group.TotalBytes < 400_000 {
+			continue
+		}
+		if candidate == nil || group.TotalBytes > candidate.TotalBytes {
+			candidate = group
+		}
+	}
+	if candidate == nil {
+		return nil
+	}
+
+	return &AnalysisFinding{
+		ID:         "below_fold_gallery_waste",
+		Category:   "media",
+		Severity:   "medium",
+		Confidence: "high",
+		Title:      "Comprime la galería que vive bajo el fold",
+		Summary:    fmt.Sprintf("%s suma %s. No frena el primer render, pero sí infla el coste por visita y multiplica el peso del catálogo visual.", candidate.Label, humanBytes(candidate.TotalBytes)),
+		Evidence: []string{
+			fmt.Sprintf("Grupo detectado: %s.", candidate.Label),
+			fmt.Sprintf("Transferencia agregada: %s en %d recursos.", humanBytes(candidate.TotalBytes), candidate.ResourceCount),
+			fmt.Sprintf("Posición dominante: %s.", strings.ReplaceAll(candidate.PositionBand, "_", " ")),
+		},
+		EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, candidate.RelatedResourceIDs),
+		RelatedResourceIDs:    append([]string(nil), candidate.RelatedResourceIDs...),
+	}
+}
+
+func buildThirdPartyFinding(resources []enrichedResource, summary AnalysisSummary) *AnalysisFinding {
+	if summary.AnalyticsRequests < 2 && summary.AnalyticsBytes < 80_000 {
+		return nil
+	}
+
+	related := collectResourceIDs(filterResources(resources, func(resource enrichedResource) bool {
+		return resource.IsThirdPartyTool && resource.ThirdPartyKind == thirdPartyAnalytics
+	}))
+
+	return &AnalysisFinding{
+		ID:         "third_party_analytics_overhead",
+		Category:   "third_party",
+		Severity:   "medium",
+		Confidence: "high",
+		Title:      "Recorta la sobrecarga de analítica",
+		Summary:    fmt.Sprintf("La capa de analítica añade %s en %d peticiones. No suele ser el cuello de botella principal, pero sí añade ruido de red y variabilidad.", humanBytes(summary.AnalyticsBytes), summary.AnalyticsRequests),
+		Evidence: []string{
+			fmt.Sprintf("Bytes de analítica: %s.", humanBytes(summary.AnalyticsBytes)),
+			fmt.Sprintf("Peticiones de analítica: %d.", summary.AnalyticsRequests),
+		},
+		EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, related),
+		RelatedResourceIDs:    related,
+	}
+}
+
+func buildFontFinding(resources []enrichedResource, summary AnalysisSummary) *AnalysisFinding {
+	if summary.FontBytes < 250_000 && summary.FontRequests < 4 {
+		return nil
+	}
+
+	related := collectResourceIDs(filterResources(resources, func(resource enrichedResource) bool {
+		return resource.Type == "font"
+	}))
+
+	return &AnalysisFinding{
+		ID:         "font_stack_overweight",
+		Category:   "fonts",
+		Severity:   "medium",
+		Confidence: "medium",
+		Title:      "Recorta el coste tipográfico",
+		Summary:    fmt.Sprintf("La pila de fuentes suma %s en %d archivos. Aunque el LCP sea bajo, este coste penaliza la carga inicial y la consistencia del primer render.", humanBytes(summary.FontBytes), summary.FontRequests),
+		Evidence: []string{
+			fmt.Sprintf("Bytes de fuentes: %s.", humanBytes(summary.FontBytes)),
+			fmt.Sprintf("Peticiones de fuentes: %d.", summary.FontRequests),
+		},
+		EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, related),
+		RelatedResourceIDs:    related,
+	}
+}
+
+func buildMainThreadFinding(resources []enrichedResource, perf PerformanceMetrics) *AnalysisFinding {
+	if perf.LongTasksTotalMS < 250 {
+		return nil
+	}
+
+	severity := "medium"
+	if perf.LongTasksTotalMS >= 600 {
+		severity = "high"
+	}
+
+	scripts := filterResources(resources, func(resource enrichedResource) bool {
+		return resource.Type == "script"
+	})
+
+	return &AnalysisFinding{
+		ID:         "main_thread_pressure",
+		Category:   "network",
+		Severity:   severity,
+		Confidence: "high",
+		Title:      "Reduce la presión real sobre la hebra principal",
+		Summary:    fmt.Sprintf("Se observaron %d long tasks que suman %d ms. Aquí el problema ya no es solo peso de red: hay trabajo real de CPU que compite con el render.", perf.LongTasksCount, perf.LongTasksTotalMS),
+		Evidence: []string{
+			fmt.Sprintf("Long Tasks totales: %d ms.", perf.LongTasksTotalMS),
+			fmt.Sprintf("Cantidad de Long Tasks: %d.", perf.LongTasksCount),
+			fmt.Sprintf("Duración acumulada de recursos script: %d ms.", perf.ScriptResourceDurationMS),
+		},
+		EstimatedSavingsBytes: sumEstimatedSavings(scripts),
+		RelatedResourceIDs:    collectTopResourceIDs(scripts, 3),
+	}
+}
+
+func buildHeavyAboveFoldFinding(resources []enrichedResource, perf PerformanceMetrics, lcpResourceID string) *AnalysisFinding {
+	var candidate *enrichedResource
+	for index := range resources {
+		resource := &resources[index]
+		if resource.ID == lcpResourceID {
+			continue
+		}
+		if resource.Bytes < 150_000 {
+			continue
+		}
+		if resource.VisualRole != visualRoleHeroMedia && resource.VisualRole != visualRoleAboveFoldMedia {
+			continue
+		}
+		if candidate == nil || resource.Bytes > candidate.Bytes {
+			candidate = resource
+		}
+	}
+	if candidate == nil {
+		return nil
+	}
+
+	severity := "medium"
+	if perf.LCPMS >= 2_000 {
+		severity = "high"
+	}
+
+	return &AnalysisFinding{
+		ID:         "heavy_above_fold_media",
+		Category:   "media",
+		Severity:   severity,
+		Confidence: "medium",
+		Title:      "Reduce la media visible en el primer viewport",
+		Summary:    fmt.Sprintf("Hay media above the fold de %s que compite con el primer render. No necesariamente domina el LCP, pero sí engorda el arranque visible.", humanBytes(candidate.Bytes)),
+		Evidence: []string{
+			fmt.Sprintf("Recurso above the fold: %s.", humanBytes(candidate.Bytes)),
+			fmt.Sprintf("Rol visual detectado: %s.", strings.ReplaceAll(candidate.VisualRole, "_", " ")),
+		},
+		EstimatedSavingsBytes: estimateSavingsBytes(candidate.Type, candidate.Bytes),
+		RelatedResourceIDs:    []string{candidate.ID},
+	}
+}
+
 func buildBreakdowns(resources []enrichedResource, totalBytes int64) ([]ResourceBreakdown, []ResourceBreakdown) {
 	typeBuckets := map[string]*bucket{}
 	partyBuckets := map[string]*bucket{}
@@ -192,10 +796,20 @@ func rankVampireResources(resources []enrichedResource, totalBytes int64) ([]enr
 	candidates := append([]enrichedResource(nil), resources...)
 
 	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].Bytes == candidates[j].Bytes {
-			return candidates[i].ID < candidates[j].ID
+		leftPriority := vampirePriority(candidates[i])
+		rightPriority := vampirePriority(candidates[j])
+		if leftPriority == rightPriority {
+			leftSavings := estimateSavingsBytes(candidates[i].Type, candidates[i].Bytes)
+			rightSavings := estimateSavingsBytes(candidates[j].Type, candidates[j].Bytes)
+			if leftSavings == rightSavings {
+				if candidates[i].Bytes == candidates[j].Bytes {
+					return candidates[i].ID < candidates[j].ID
+				}
+				return candidates[i].Bytes > candidates[j].Bytes
+			}
+			return leftSavings > rightSavings
 		}
-		return candidates[i].Bytes > candidates[j].Bytes
+		return leftPriority > rightPriority
 	})
 
 	if len(candidates) > 5 {
@@ -245,6 +859,34 @@ func rankVampireResources(resources []enrichedResource, totalBytes int64) ([]enr
 	return candidates, warnings
 }
 
+func vampirePriority(resource enrichedResource) int {
+	priority := 10
+	switch resource.VisualRole {
+	case visualRoleLCPCandidate:
+		priority = 90
+	case visualRoleHeroMedia:
+		priority = 80
+	case visualRoleAboveFoldMedia:
+		priority = 70
+	case visualRoleRepeatedCard:
+		priority = 55
+	case visualRoleBelowFoldMedia:
+		priority = 45
+	}
+
+	if resource.Type == "font" {
+		priority = maxInt(priority, 65)
+	}
+	if resource.IsThirdPartyTool && resource.ThirdPartyKind == thirdPartyAnalytics {
+		priority = maxInt(priority, 60)
+	}
+	if resource.Type == "script" && resource.PositionBand == positionAboveFold {
+		priority = maxInt(priority, 62)
+	}
+
+	return priority
+}
+
 func shareOf(bytes, totalBytes int64) float64 {
 	if totalBytes <= 0 {
 		return 0
@@ -254,4 +896,113 @@ func shareOf(bytes, totalBytes int64) float64 {
 
 func resourceFailed(resource enrichedResource) bool {
 	return resource.Failed || resource.StatusCode >= 400
+}
+
+func sumBytes(resources []enrichedResource) int64 {
+	var total int64
+	for _, resource := range resources {
+		total += resource.Bytes
+	}
+	return total
+}
+
+func sumEstimatedSavings(resources []enrichedResource) int64 {
+	var total int64
+	for _, resource := range resources {
+		total += estimateSavingsBytes(resource.Type, resource.Bytes)
+	}
+	return total
+}
+
+func sumEstimatedSavingsForIDs(resources []enrichedResource, ids []string) int64 {
+	if len(ids) == 0 {
+		return 0
+	}
+	lookup := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		lookup[id] = struct{}{}
+	}
+	var total int64
+	for _, resource := range resources {
+		if _, ok := lookup[resource.ID]; ok {
+			total += estimateSavingsBytes(resource.Type, resource.Bytes)
+		}
+	}
+	return total
+}
+
+func collectResourceIDs(resources []enrichedResource) []string {
+	ids := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		ids = append(ids, resource.ID)
+	}
+	return ids
+}
+
+func collectTopResourceIDs(resources []enrichedResource, limit int) []string {
+	if len(resources) == 0 || limit <= 0 {
+		return nil
+	}
+	sorted := append([]enrichedResource(nil), resources...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].Bytes == sorted[j].Bytes {
+			return sorted[i].ID < sorted[j].ID
+		}
+		return sorted[i].Bytes > sorted[j].Bytes
+	})
+	if len(sorted) > limit {
+		sorted = sorted[:limit]
+	}
+	return collectResourceIDs(sorted)
+}
+
+func filterResources(resources []enrichedResource, predicate func(enrichedResource) bool) []enrichedResource {
+	filtered := make([]enrichedResource, 0, len(resources))
+	for _, resource := range resources {
+		if predicate(resource) {
+			filtered = append(filtered, resource)
+		}
+	}
+	return filtered
+}
+
+func findingSeverityRank(value string) int {
+	switch value {
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func findingConfidenceRank(value string) int {
+	switch value {
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func humanBytes(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	}
+
+	units := []string{"KB", "MB", "GB"}
+	value := float64(bytes) / 1024
+	unitIndex := 0
+	for value >= 1024 && unitIndex < len(units)-1 {
+		value /= 1024
+		unitIndex++
+	}
+	precision := 1
+	if value >= 100 {
+		precision = 0
+	}
+	return fmt.Sprintf("%.*f %s", precision, value, units[unitIndex])
 }

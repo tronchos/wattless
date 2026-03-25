@@ -37,7 +37,7 @@ export function ScoreRing({ score, grams }: ScoreRingProps) {
       </div>
 
       <p className="text-sm text-on-surface-variant mt-2 italic">
-        {entropyLabel}. Better than {progress}% of audited pages.
+        {entropyLabel}. Referencia interna: {progress}/100.
       </p>
 
       <div className="w-full h-1.5 bg-surface-container-highest rounded-full mt-4 overflow-hidden">

@@ -17,6 +17,8 @@ import { useState } from "react";
 
 import { BreakdownBars } from "@/components/breakdown-bars";
 import { CompareBanner } from "@/components/compare-banner";
+import { AuditEvidenceStrip } from "@/components/audit-evidence-strip";
+import { FindingsPanel } from "@/components/findings-panel";
 import { InsightsPanel } from "@/components/insights-panel";
 import { MarkdownReportCard } from "@/components/markdown-report-card";
 import { MethodologyCard } from "@/components/methodology-card";
@@ -32,12 +34,12 @@ const emptyStateHighlights = [
   {
     id: "empty-diagnostic",
     title: "Diagnóstico",
-    description: "Inspector visual, activos dominantes y prioridades de mejora.",
+    description: "Inspector visual, activos dominantes y jerarquía de impacto real.",
   },
   {
-    id: "green-fix",
-    title: "Zero-Click Fix",
-    description: "Snippets generados por IA integrados directamente en el panel de análisis sin necesidad de código extra.",
+    id: "findings",
+    title: "Findings",
+    description: "Hallazgos con severidad, confianza y evidencia para decidir qué arreglar primero.",
   },
   {
     id: "methodology",
@@ -163,64 +165,77 @@ export function ScanWorkbench() {
                 <CompareBanner current={report} previous={previousReport} />
               ) : null}
 
-              {/* SECTION 1: Executive Summary & Visual Forensic */}
               <div className="space-y-8">
-                 {/* Top KPIs */}
-                 <section className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
-                   <ScoreRing
-                     score={report.score}
-                     grams={formatGrams(report.co2_grams_per_visit)}
-                   />
-                   <MetricCard
-                     label="Payload size"
-                     value={formatBytes(report.total_bytes_transferred)}
-                     caption={`${report.summary.total_requests.toLocaleString("es-CO")} requests · ${formatHostingLabel(report)}`}
-                     hint="Perfil de transferencia observado durante el runtime."
-                     progress={Math.min(
-                       100,
-                       (report.total_bytes_transferred / Math.max(report.total_bytes_transferred + report.summary.potential_savings_bytes, 1)) * 100
-                     )}
-                     icon={Leaf}
-                   />
-                   <MetricCard
-                     label="Performance"
-                     value={formatMilliseconds(report.performance.lcp_ms)}
-                     caption={`FCP ${formatMilliseconds(report.performance.fcp_ms)}`}
-                     hint="Lectura rápida de carga crítica."
-                     progress={Math.max(10, 100 - Math.min(report.performance.lcp_ms / 40, 90))}
-                     icon={Gauge}
-                   />
-                 </section>
+                <section className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
+                  <ScoreRing
+                    score={report.score}
+                    grams={formatGrams(report.co2_grams_per_visit)}
+                  />
+                  <MetricCard
+                    label="Payload size"
+                    value={formatBytes(report.total_bytes_transferred)}
+                    caption={`${report.summary.total_requests.toLocaleString("es-CO")} requests · ${formatHostingLabel(report)}`}
+                    hint="Transferencia observada durante la visita sintética."
+                    progress={Math.min(
+                      100,
+                      (report.total_bytes_transferred /
+                        Math.max(
+                          report.total_bytes_transferred +
+                            report.summary.potential_savings_bytes,
+                          1,
+                        )) *
+                        100,
+                    )}
+                    icon={Leaf}
+                  />
+                  <MetricCard
+                    label="Performance"
+                    value={formatMilliseconds(report.performance.lcp_ms)}
+                    caption={`FCP ${formatMilliseconds(report.performance.fcp_ms)} · Long Tasks ${formatMilliseconds(report.performance.long_tasks_total_ms)}`}
+                    hint="Render crítico y presión real de CPU."
+                    progress={Math.max(
+                      10,
+                      100 - Math.min(report.performance.lcp_ms / 40, 90),
+                    )}
+                    icon={Gauge}
+                  />
+                </section>
 
-                 {/* Split View: Insights + Vampires (Left) vs Screenshot (Right) */}
-                 <section id="diagnostic" className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.4fr] xl:grid-cols-[1fr_1.6fr] gap-8 xl:gap-12 pt-4">
-                   {/* Left Column: Semantic Data (Actionable & Tabular) */}
-                   <div className="flex flex-col gap-8">
-                     <InsightsPanel
-                       report={report}
-                       selectedElementID={selectedElementID}
-                       onSelectElement={setSelectedElementID}
-                     />
-                     <VampireList
-                       elements={report.vampire_elements}
-                       selectedElementID={selectedElementID}
-                       capturedHeight={report.screenshot.captured_height}
-                       onSelect={setSelectedElementID}
-                     />
-                   </div>
+                <AuditEvidenceStrip report={report} />
 
-                   {/* Right Column: Visual Evidence (Hero Image Effect) */}
-                   <div className="relative">
-                     <div className="sticky top-8">
-                       <ScreenshotInspector
-                         screenshot={report.screenshot}
-                         elements={report.vampire_elements}
-                         selectedElement={selectedElement}
-                         onSelect={setSelectedElementID}
-                       />
-                     </div>
-                   </div>
-                 </section>
+                {report.analysis.findings.length > 0 ? (
+                  <FindingsPanel findings={report.analysis.findings} />
+                ) : null}
+
+                <section
+                  id="diagnostic"
+                  className="grid grid-cols-1 lg:grid-cols-[1.45fr_1fr] gap-8 xl:gap-12 pt-2"
+                >
+                  <div className="relative">
+                    <div className="sticky top-8">
+                      <ScreenshotInspector
+                        screenshot={report.screenshot}
+                        elements={report.vampire_elements}
+                        selectedElement={selectedElement}
+                        onSelect={setSelectedElementID}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-8">
+                    <VampireList
+                      elements={report.vampire_elements}
+                      selectedElementID={selectedElementID}
+                      capturedHeight={report.screenshot.captured_height}
+                      onSelect={setSelectedElementID}
+                    />
+                    <InsightsPanel
+                      report={report}
+                      selectedElementID={selectedElementID}
+                      onSelectElement={setSelectedElementID}
+                    />
+                  </div>
+                </section>
               </div>
 
               {/* SECTION 4: Technical Evidence (Accordion to reduce cognitive load) */}
@@ -367,7 +382,7 @@ export function ScanWorkbench() {
               <p className="mt-4 max-w-3xl text-sm leading-relaxed text-on-surface-variant text-center sm:text-left mx-auto sm:mx-0">
                 {isScanning
                   ? "Wattless está emulando un perfil moderno para recolectar métricas de transferencia de red, CPU throttling e hitos de render visual para producir un dictamen preciso."
-                  : "El reporte completo fluye de manera progresiva: empieza por el score global, diagnostica visualmente tus recursos y termina accionando un Green Fix para tu código."}
+                  : "El reporte completo fluye de manera progresiva: empieza por el score global, separa evidencia above/below the fold y termina priorizando hallazgos accionables."}
               </p>
 
               <div className="mt-10 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">

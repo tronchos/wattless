@@ -9,6 +9,14 @@ import (
 func TestReportJSONIncludesMetaAndMethodology(t *testing.T) {
 	report := Report{
 		URL: "https://example.com",
+		Analysis: Analysis{
+			Summary: AnalysisSummary{
+				AboveFoldBytes: 1234,
+			},
+			Findings: []AnalysisFinding{
+				{ID: "render_lcp_candidate", Title: "Ataca el LCP"},
+			},
+		},
 		Meta: Meta{
 			GeneratedAt:    "2026-03-25T22:10:00Z",
 			ScanDurationMS: 1842,
@@ -36,6 +44,9 @@ func TestReportJSONIncludesMetaAndMethodology(t *testing.T) {
 	}
 	if !strings.Contains(payload, `"methodology"`) {
 		t.Fatal("expected methodology in JSON payload")
+	}
+	if !strings.Contains(payload, `"analysis"`) {
+		t.Fatal("expected analysis in JSON payload")
 	}
 	if !strings.Contains(payload, `"scanner_version":"2026.03"`) {
 		t.Fatal("expected scanner version in JSON payload")

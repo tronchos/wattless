@@ -23,6 +23,14 @@ type ResourceSummary struct {
 	TransferShare         float64      `json:"transfer_share"`
 	EstimatedSavingsBytes int64        `json:"estimated_savings_bytes"`
 	Recommendation        string       `json:"recommendation"`
+	PositionBand          string       `json:"position_band"`
+	VisualRole            string       `json:"visual_role"`
+	DOMTag                string       `json:"dom_tag"`
+	LoadingAttr           string       `json:"loading_attr"`
+	FetchPriority         string       `json:"fetch_priority"`
+	ResponsiveImage       bool         `json:"responsive_image"`
+	IsThirdPartyTool      bool         `json:"is_third_party_tool"`
+	ThirdPartyKind        string       `json:"third_party_kind"`
 	BoundingBox           *BoundingBox `json:"bounding_box"`
 }
 
@@ -44,11 +52,60 @@ type Summary struct {
 }
 
 type PerformanceMetrics struct {
-	LoadMS             int64 `json:"load_ms"`
-	DOMContentLoadedMS int64 `json:"dom_content_loaded_ms"`
-	ScriptDurationMS   int64 `json:"script_duration_ms"`
-	LCPMS              int64 `json:"lcp_ms"`
-	FCPMS              int64 `json:"fcp_ms"`
+	LoadMS                   int64  `json:"load_ms"`
+	DOMContentLoadedMS       int64  `json:"dom_content_loaded_ms"`
+	ScriptResourceDurationMS int64  `json:"script_resource_duration_ms"`
+	LCPMS                    int64  `json:"lcp_ms"`
+	FCPMS                    int64  `json:"fcp_ms"`
+	LongTasksTotalMS         int64  `json:"long_tasks_total_ms"`
+	LongTasksCount           int    `json:"long_tasks_count"`
+	LCPResourceURL           string `json:"lcp_resource_url,omitempty"`
+	LCPResourceTag           string `json:"lcp_resource_tag,omitempty"`
+	LCPSelectorHint          string `json:"lcp_selector_hint,omitempty"`
+	LCPSize                  int64  `json:"lcp_size,omitempty"`
+}
+
+type AnalysisSummary struct {
+	AboveFoldBytes       int64  `json:"above_fold_bytes"`
+	BelowFoldBytes       int64  `json:"below_fold_bytes"`
+	LCPResourceID        string `json:"lcp_resource_id,omitempty"`
+	LCPResourceURL       string `json:"lcp_resource_url,omitempty"`
+	LCPResourceBytes     int64  `json:"lcp_resource_bytes,omitempty"`
+	AnalyticsBytes       int64  `json:"analytics_bytes"`
+	AnalyticsRequests    int    `json:"analytics_requests"`
+	FontBytes            int64  `json:"font_bytes"`
+	FontRequests         int    `json:"font_requests"`
+	RepeatedGalleryBytes int64  `json:"repeated_gallery_bytes"`
+	RepeatedGalleryCount int    `json:"repeated_gallery_count"`
+	RenderCriticalBytes  int64  `json:"render_critical_bytes"`
+}
+
+type AnalysisFinding struct {
+	ID                    string   `json:"id"`
+	Category              string   `json:"category"`
+	Severity              string   `json:"severity"`
+	Confidence            string   `json:"confidence"`
+	Title                 string   `json:"title"`
+	Summary               string   `json:"summary"`
+	Evidence              []string `json:"evidence"`
+	EstimatedSavingsBytes int64    `json:"estimated_savings_bytes"`
+	RelatedResourceIDs    []string `json:"related_resource_ids"`
+}
+
+type ResourceGroup struct {
+	ID                 string   `json:"id"`
+	Kind               string   `json:"kind"`
+	Label              string   `json:"label"`
+	TotalBytes         int64    `json:"total_bytes"`
+	ResourceCount      int      `json:"resource_count"`
+	PositionBand       string   `json:"position_band"`
+	RelatedResourceIDs []string `json:"related_resource_ids"`
+}
+
+type Analysis struct {
+	Summary        AnalysisSummary   `json:"summary"`
+	Findings       []AnalysisFinding `json:"findings"`
+	ResourceGroups []ResourceGroup   `json:"resource_groups"`
 }
 
 type ScreenshotTile struct {
@@ -97,6 +154,7 @@ type Report struct {
 	Insights              insights.ScanInsights `json:"insights"`
 	VampireElements       []ResourceSummary     `json:"vampire_elements"`
 	Performance           PerformanceMetrics    `json:"performance"`
+	Analysis              Analysis              `json:"analysis"`
 	Screenshot            Screenshot            `json:"screenshot"`
 	Meta                  Meta                  `json:"meta"`
 	Methodology           Methodology           `json:"methodology"`
@@ -115,9 +173,14 @@ type rawResource struct {
 }
 
 type domElement struct {
-	URL    string  `json:"url"`
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
+	URL             string  `json:"url"`
+	Tag             string  `json:"tag"`
+	LoadingAttr     string  `json:"loading"`
+	FetchPriority   string  `json:"fetch_priority"`
+	ResponsiveImage bool    `json:"responsive_image"`
+	SelectorHint    string  `json:"selector_hint"`
+	X               float64 `json:"x"`
+	Y               float64 `json:"y"`
+	Width           float64 `json:"width"`
+	Height          float64 `json:"height"`
 }

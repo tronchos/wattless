@@ -13,7 +13,7 @@ function resolvePreferredElement(report: ScanReport): VampireElement | null {
   const action = report.insights.top_actions[0];
   if (action) {
     const matching = report.vampire_elements.find(
-      (element) => element.id === action.related_resource_id
+      (element) => action.related_resource_ids.includes(element.id)
     );
     if (matching) return matching;
   }

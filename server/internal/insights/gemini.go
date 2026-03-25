@@ -44,11 +44,14 @@ Devuelve JSON estricto sin markdown con esta forma:
   "top_actions": [
     {
       "id": string,
+      "related_finding_id": string,
       "title": string,
       "reason": string,
+      "confidence": "high"|"medium"|"low",
+      "evidence": [string],
       "estimated_savings_bytes": number,
       "likely_lcp_impact": "high"|"medium"|"low",
-      "related_resource_id": string,
+      "related_resource_ids": [string],
       "recommended_fix": {
         "summary": "Explicación breve de la corrección",
         "optimized_code": "Código React/Next de ejemplo reemplazando el asset infractor",
@@ -63,8 +66,12 @@ Reglas:
 - Escribe en español.
 - No inventes métricas fuera del contexto dado.
 - Máximo 3 acciones.
-- Cada acción debe referenciar un related_resource_id existente.
-- Prioriza recursos con mayor estimated_savings_bytes y relación con LCP o terceros.
+- Cada acción debe referenciar un related_finding_id existente y al menos un related_resource_ids existente.
+- Prioriza findings, no bytes crudos aislados.
+- No llames hero image a un recurso salvo que su visual_role sea hero_media o lcp_candidate.
+- Distingue claramente entre carga inicial y below-the-fold.
+- Usa el campo confidence para no sobreafirmar.
+- No interpretes script_resource_duration_ms como bloqueo real; usa long_tasks_total_ms para hablar de presión de CPU.
 - El campo 'recommended_fix' debe incluirse obligatoriamente en al menos la primera top action (el cuello de botella crítico).
 - En 'optimized_code', produce un snippet nativo de código (preferible React/NextJS) ilustrando la solución sin bloques markdown y asumiendo que el asset problemático se usará ahí (ej: si falla img.png, escribe <Image src="img.png"... />). Mantenlo limpio y profesional.
 
@@ -88,8 +95,6 @@ Contexto:
 		TopActions:       payload.TopActions,
 	}, nil
 }
-
-
 
 func (provider GeminiProvider) generateJSON(ctx context.Context, prompt string, target any) error {
 	if provider.apiKey == "" {

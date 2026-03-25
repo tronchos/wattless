@@ -1,6 +1,9 @@
 import {
   formatBytes,
+  formatPositionBand,
   formatResourceLabel,
+  formatThirdPartyKind,
+  formatVisualRole,
 } from "@/lib/api";
 import type { VampireElement } from "@/lib/types";
 
@@ -37,11 +40,20 @@ export function VampireList({
             {elements.map((element) => {
               const isActive = selectedElement?.id === element.id;
               const coverage = getCoverageState(element, capturedHeight);
+              const badges = buildBadges(element);
               
-              // Impact styling logic based on estimated savings or type
               let impactLevel: "HIGH" | "MED" | "LOW" = "LOW";
-              if (element.estimated_savings_bytes > 50000) impactLevel = "HIGH";
-              else if (element.estimated_savings_bytes > 10000) impactLevel = "MED";
+              if (
+                element.visual_role === "lcp_candidate" ||
+                element.estimated_savings_bytes > 50000
+              ) {
+                impactLevel = "HIGH";
+              } else if (
+                element.visual_role === "hero_media" ||
+                element.estimated_savings_bytes > 10000
+              ) {
+                impactLevel = "MED";
+              }
 
               return (
                 <tr
@@ -62,6 +74,14 @@ export function VampireList({
                        <span className={`rounded-full px-2 py-0.5 font-label font-bold ${coverage.className}`}>
                          {coverage.label}
                        </span>
+                       {badges.map((badge) => (
+                         <span
+                           key={`${element.id}-${badge}`}
+                           className="rounded-full bg-surface-container-highest px-2 py-0.5 font-label font-bold text-on-surface-variant"
+                         >
+                           {badge}
+                         </span>
+                       ))}
                     </div>
                   </td>
                   <td className="px-4 py-4 opacity-70 block md:table-cell">
@@ -86,6 +106,22 @@ export function VampireList({
       </div>
     </div>
   );
+}
+
+function buildBadges(element: VampireElement) {
+  const badges = [formatPositionBand(element.position_band)];
+
+  if (element.visual_role !== "unknown") {
+    badges.push(formatVisualRole(element.visual_role));
+  }
+  if (element.is_third_party_tool && element.third_party_kind !== "unknown") {
+    badges.push(formatThirdPartyKind(element.third_party_kind));
+  }
+  if (element.type === "font") {
+    badges.push("Font cost");
+  }
+
+  return badges.filter((badge, index, all) => badge && all.indexOf(badge) === index);
 }
 
 function getCoverageState(element: VampireElement, capturedHeight: number) {

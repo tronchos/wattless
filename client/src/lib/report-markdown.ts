@@ -19,6 +19,7 @@ export function createMarkdownReport(
     `- Transferencia total: ${formatBytes(report.total_bytes_transferred)}`,
     `- LCP: ${formatMilliseconds(report.performance.lcp_ms)}`,
     `- FCP: ${formatMilliseconds(report.performance.fcp_ms)}`,
+    `- Long Tasks: ${formatMilliseconds(report.performance.long_tasks_total_ms)} (${report.performance.long_tasks_count})`,
     `- Load: ${formatMilliseconds(report.performance.load_ms)}`,
     `- Inspector coverage: ${formatInspectorCoverage(report)}`,
     `- Hosting: ${report.hosting_verdict}${report.hosted_by ? ` (${report.hosted_by})` : ""}`,
@@ -39,11 +40,29 @@ export function createMarkdownReport(
         `${index + 1}. ${action.title} - ${action.reason} (ahorro estimado: ${formatBytes(action.estimated_savings_bytes)})`,
     ),
     ``,
+    `## Findings`,
+    ``,
+    ...(report.analysis.findings.length > 0
+      ? report.analysis.findings.map(
+          (finding) =>
+            `- [${finding.severity}/${finding.confidence}] ${finding.title}: ${finding.summary}`,
+        )
+      : [`- No se detectaron hallazgos prioritarios.`]),
+    ``,
+    `## Evidence`,
+    ``,
+    `- Above the fold bytes: ${formatBytes(report.analysis.summary.above_fold_bytes)}`,
+    `- Below the fold bytes: ${formatBytes(report.analysis.summary.below_fold_bytes)}`,
+    `- LCP resource: ${report.analysis.summary.lcp_resource_url || "Sin match"}${report.analysis.summary.lcp_resource_bytes ? ` (${formatBytes(report.analysis.summary.lcp_resource_bytes)})` : ""}`,
+    `- Analytics bytes: ${formatBytes(report.analysis.summary.analytics_bytes)}`,
+    `- Font bytes: ${formatBytes(report.analysis.summary.font_bytes)}`,
+    `- Render critical bytes: ${formatBytes(report.analysis.summary.render_critical_bytes)}`,
+    ``,
     `## Elementos vampiro`,
     ``,
     ...report.vampire_elements.map(
       (element, index) =>
-        `- #${index + 1} ${element.type}: ${element.url} (${formatBytes(element.bytes)})`,
+        `- #${index + 1} ${element.type}: ${element.url} (${formatBytes(element.bytes)}, ${element.visual_role}, ${element.position_band})`,
     ),
     ``,
     `## Metodología`,

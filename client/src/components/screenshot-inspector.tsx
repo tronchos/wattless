@@ -6,8 +6,11 @@ import {
   formatBytes,
   formatParty,
   formatPercentage,
+  formatPositionBand,
   formatRequestStatus,
   formatResourceLabel,
+  formatThirdPartyKind,
+  formatVisualRole,
 } from "@/lib/api";
 import type { BoundingBox, ScreenshotPayload, VampireElement } from "@/lib/types";
 
@@ -182,6 +185,20 @@ export function ScreenshotInspector({
               <span className="rounded bg-surface-container-highest px-2 py-1 text-on-surface">
                 {formatPercentage(selectedElement.transfer_share)}
               </span>
+              <span className="rounded bg-surface-container-highest px-2 py-1 text-on-surface">
+                {formatPositionBand(selectedElement.position_band)}
+              </span>
+              {selectedElement.visual_role !== "unknown" ? (
+                <span className="rounded bg-surface-container-highest px-2 py-1 text-on-surface">
+                  {formatVisualRole(selectedElement.visual_role)}
+                </span>
+              ) : null}
+              {selectedElement.is_third_party_tool &&
+              selectedElement.third_party_kind !== "unknown" ? (
+                <span className="rounded bg-surface-container-highest px-2 py-1 text-on-surface">
+                  {formatThirdPartyKind(selectedElement.third_party_kind)}
+                </span>
+              ) : null}
               <span
                 className={`rounded px-2 py-1 ${
                   !selectedElement.bounding_box

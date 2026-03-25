@@ -18,88 +18,58 @@ func (RuleBasedProvider) Name() string {
 }
 
 func (RuleBasedProvider) SuggestResource(resource ResourceContext) string {
-	resourceType := strings.ToLower(resource.Type)
 	switch {
 	case resource.Failed:
 		return "Corrige el fallo de esta petición o elimina la dependencia si ya no aporta valor."
-	case resourceType == "video":
-		return "Transcodifica este video, reduce bitrate y evita autoplay si no es esencial."
-	case resourceType == "image" && resource.Bytes > 500_000:
-		return "Comprime, recorta o convierte esta imagen a AVIF/WebP para bajar peso y mejorar el LCP."
-	case resourceType == "script" && resource.Bytes > 250_000:
-		return "Divide este bundle, difiere código no crítico y retrasa terceros hasta interacción."
-	case resourceType == "stylesheet":
-		return "Elimina CSS no usado e inyecta solo estilos críticos en el primer render."
-	case resourceType == "font":
-		return "Subconjunta la fuente, limita variantes y sirve WOFF2."
+	case resource.VisualRole == "lcp_candidate":
+		return "Este recurso coincide con el LCP. Prioriza compresión, dimensionado correcto y una carga crítica más disciplinada."
+	case resource.VisualRole == "hero_media":
+		return "Esta media vive above the fold. Si la recortas o la sirves con mejor responsive imaging, reduces presión en el arranque visible."
+	case resource.VisualRole == "repeated_card_media":
+		return "Forma parte de una galería repetida. Optimízala en lote y sirve versiones más pequeñas para bajar el coste por visita."
+	case resource.IsThirdPartyTool && resource.ThirdPartyKind == "analytics":
+		return "Retrasa la analítica no esencial hasta interacción o agrupa proveedores para bajar ruido de red."
+	case resource.Type == "font":
+		return "Subconjunta la fuente, limita variantes y sirve solo WOFF2."
+	case resource.Type == "script":
+		return "Divide el script, difiere el código no crítico y vigila Long Tasks además del peso transferido."
+	case resource.Type == "image":
+		return "Comprime y dimensiona este asset según su rol visual real, no solo por su peso bruto."
 	default:
-		return "Reduce transferencia o carga este recurso de forma diferida."
+		return "Reduce transferencia o carga este recurso de forma más diferida."
 	}
 }
 
 func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report ReportContext) (ScanInsights, error) {
+	findings := prioritizeFindings(report.Analysis.Findings)
 	actions := make([]TopAction, 0, 3)
-	for index, resource := range prioritizeResources(report.TopResources) {
+
+	for index, finding := range findings {
 		if index >= 3 {
 			break
 		}
 
-		title, reason, impact := provider.actionCopy(resource, report)
-		
-		var recommendedFix *RecommendedFix
-		if index == 0 {
-			recommendedFix = &RecommendedFix{
-				Summary: "Implementación genérica recomendada para atajar bloqueos de renderizado.",
-				OptimizedCode: `import Image from "next/image";
-import Script from "next/script";
-
-export default function OptimizedComponent({ imageSrc }) {
-  return (
-    <div>
-      <Image
-        src={imageSrc}
-        alt="Dominant Asset"
-        width={1200}
-        height={900}
-        priority={true}
-        sizes="(max-width: 768px) 100vw, 48vw"
-      />
-      <Script strategy="lazyOnload">
-        { /* Diferimos los terceros */ }
-      </Script>
-    </div>
-  );
-}`,
-				Changes: []string{"Carga priorizada de LCP", "Diferido de tags externos"},
-				ExpectedImpact: "Debería reducir substancialmente el bloqueo de la hebra principal.",
-			}
+		action := TopAction{
+			ID:                    fmt.Sprintf("act-%d", index+1),
+			RelatedFindingID:      finding.ID,
+			Title:                 finding.Title,
+			Reason:                finding.Summary,
+			Confidence:            finding.Confidence,
+			Evidence:              append([]string(nil), finding.Evidence...),
+			EstimatedSavingsBytes: finding.EstimatedSavingsBytes,
+			LikelyLCPImpact:       findingImpact(finding),
+			RelatedResourceIDs:    append([]string(nil), finding.RelatedResourceIDs...),
 		}
 
-		actions = append(actions, TopAction{
-			ID:                    fmt.Sprintf("act-%d", index+1),
-			Title:                 title,
-			Reason:                reason,
-			EstimatedSavingsBytes: resource.EstimatedSavingsBytes,
-			LikelyLCPImpact:       impact,
-			RelatedResourceID:     resource.ID,
-			RecommendedFix:        recommendedFix,
-		})
+		if index == 0 && (finding.Confidence == "high" || finding.Confidence == "medium") {
+			action.RecommendedFix = recommendedFixForFinding(finding)
+		}
+
+		actions = append(actions, action)
 	}
 
-	summary := "Tu web ya ofrece una auditoría útil, pero todavía hay margen para reducir bytes y mejorar la experiencia percibida."
-	switch {
-	case report.Performance.LCPMS > 2500 && len(report.TopResources) > 0:
-		summary = "Tu sostenibilidad está frenada por el render inicial: el LCP es alto y los recursos principales siguen cargando demasiado peso."
-	case report.Summary.ThirdPartyBytes > report.Summary.FirstPartyBytes:
-		summary = "Los recursos de terceros dominan la transferencia. Reducirlos bajará CO2, ruido de red y variabilidad en la carga."
-	case report.CO2GramsPerVisit <= 0.10:
-		summary = "La base es buena: la página ya es ligera, pero aún puedes afinar el render crítico para hacerla más consistente."
-	}
-
-	pitchLine := "Menos bytes y menos bloqueo en el render significan menos CO2, mejor LCP y una experiencia más rápida para la persona usuaria."
-	if len(actions) > 0 && actions[0].LikelyLCPImpact == "high" {
-		pitchLine = "Atacando el recurso principal y retrasando lo no crítico puedes mejorar el LCP y bajar la huella por visita en el mismo movimiento."
-	}
+	summary := buildExecutiveSummary(report)
+	pitchLine := buildPitchLine(report)
 
 	return ScanInsights{
 		Provider:         provider.Name(),
@@ -109,55 +79,218 @@ export default function OptimizedComponent({ imageSrc }) {
 	}, nil
 }
 
-
-
-func (provider RuleBasedProvider) actionCopy(resource ResourceContext, report ReportContext) (title string, reason string, impact string) {
-	impact = "medium"
-	resourceType := strings.ToLower(resource.Type)
-
-	switch {
-	case resource.Failed:
-		title = "Elimina o corrige una petición fallida"
-		reason = "Sigue generando ruido de red y complejidad sin aportar valor al usuario final."
-		impact = "low"
-	case resourceType == "image":
-		title = "Optimiza la imagen principal"
-		reason = "Aporta mucho peso y es muy probable que influya en el render crítico."
-		if report.Performance.LCPMS >= 2000 {
-			impact = "high"
-		}
-	case resourceType == "script":
-		title = "Retrasa JavaScript no crítico"
-		reason = "El bundle principal compite con el render, aumenta CPU y retrasa interactividad."
-		if report.Performance.ScriptDurationMS > 200 {
-			impact = "high"
-		}
-	case resourceType == "video":
-		title = "Reduce el costo del video"
-		reason = "El video domina la transferencia y dispara el costo por visita."
-		impact = "high"
-	case resourceType == "font":
-		title = "Recorta la carga de tipografías"
-		reason = "Las fuentes pesadas penalizan el primer render y añaden peticiones evitables."
-	default:
-		title = "Reduce el peso del recurso dominante"
-		reason = "Es uno de los elementos con mayor transferencia dentro de la página analizada."
-	}
-
-	if resource.TransferShare >= 20 {
-		reason = "Este recurso concentra una parte muy alta de la transferencia total y es el mejor punto de ataque para una mejora rápida."
-	}
-
-	return title, reason, impact
-}
-
-func prioritizeResources(resources []ResourceContext) []ResourceContext {
-	sorted := append([]ResourceContext(nil), resources...)
+func prioritizeFindings(findings []AnalysisFindingContext) []AnalysisFindingContext {
+	sorted := append([]AnalysisFindingContext(nil), findings...)
 	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].EstimatedSavingsBytes == sorted[j].EstimatedSavingsBytes {
-			return sorted[i].Bytes > sorted[j].Bytes
+		if severityRank(sorted[i].Severity) == severityRank(sorted[j].Severity) {
+			if confidenceRank(sorted[i].Confidence) == confidenceRank(sorted[j].Confidence) {
+				if sorted[i].EstimatedSavingsBytes == sorted[j].EstimatedSavingsBytes {
+					return sorted[i].ID < sorted[j].ID
+				}
+				return sorted[i].EstimatedSavingsBytes > sorted[j].EstimatedSavingsBytes
+			}
+			return confidenceRank(sorted[i].Confidence) > confidenceRank(sorted[j].Confidence)
 		}
-		return sorted[i].EstimatedSavingsBytes > sorted[j].EstimatedSavingsBytes
+		return severityRank(sorted[i].Severity) > severityRank(sorted[j].Severity)
 	})
 	return sorted
+}
+
+func severityRank(value string) int {
+	switch value {
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func confidenceRank(value string) int {
+	switch value {
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func findingImpact(finding AnalysisFindingContext) string {
+	switch finding.ID {
+	case "render_lcp_candidate":
+		return "high"
+	case "main_thread_pressure":
+		if finding.Severity == "high" {
+			return "high"
+		}
+		return "medium"
+	case "heavy_above_fold_media":
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func recommendedFixForFinding(finding AnalysisFindingContext) *RecommendedFix {
+	switch finding.ID {
+	case "render_lcp_candidate", "heavy_above_fold_media":
+		return &RecommendedFix{
+			Summary: "Plantilla base para reducir el peso del media crítico y ajustar prioridad de carga sin romper el layout.",
+			OptimizedCode: `import Image from "next/image";
+
+export function HeroAsset() {
+  return (
+    <Image
+      src="/asset-critico.webp"
+      alt="Asset crítico"
+      width={1280}
+      height={720}
+      priority
+      sizes="100vw"
+      quality={72}
+    />
+  );
+}`,
+			Changes: []string{
+				"Dimensiones explícitas para evitar trabajo extra de layout",
+				"Calidad controlada y formato moderno para bajar bytes",
+				"Prioridad reservada solo al asset crítico de verdad",
+			},
+			ExpectedImpact: "Menos peso en el render crítico y mejor margen para el LCP.",
+		}
+	case "below_fold_gallery_waste":
+		return &RecommendedFix{
+			Summary: "Patrón para listas visuales bajo el fold: versiones más pequeñas y carga diferida por defecto.",
+			OptimizedCode: `import Image from "next/image";
+
+export function CourseCard({ course }) {
+  return (
+    <article>
+      <Image
+        src={course.cover}
+        alt={course.title}
+        width={480}
+        height={270}
+        loading="lazy"
+        sizes="(max-width: 768px) 100vw, 33vw"
+      />
+    </article>
+  );
+}`,
+			Changes: []string{
+				"Lazy loading explícito para el grid no crítico",
+				"Tamaño realista para miniaturas y tarjetas",
+				"Responsive sizes para no servir desktop en móvil",
+			},
+			ExpectedImpact: "Menor coste por visita sin tocar el primer render.",
+		}
+	case "third_party_analytics_overhead":
+		return &RecommendedFix{
+			Summary: "Patrón conservador para retrasar tags de terceros y evitar que compitan con el arranque.",
+			OptimizedCode: `import Script from "next/script";
+
+export function DeferredAnalytics() {
+  return (
+    <Script
+      src="https://analytics.example.com/tag.js"
+      strategy="lazyOnload"
+    />
+  );
+}`,
+			Changes: []string{
+				"Se difiere el proveedor hasta que la página ya cargó",
+				"Se reduce ruido de red durante el render inicial",
+			},
+			ExpectedImpact: "Menos variabilidad y menos presión de terceros en el arranque.",
+		}
+	case "font_stack_overweight":
+		return &RecommendedFix{
+			Summary: "Punto de partida para limitar variantes y servir una pila tipográfica más pequeña.",
+			OptimizedCode: `@font-face {
+  font-family: "Brand Sans";
+  src: url("/fonts/brand-sans-subset.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 400 700;
+}`,
+			Changes: []string{
+				"Subset de glifos y una sola variante moderna",
+				"font-display: swap para no bloquear contenido",
+			},
+			ExpectedImpact: "Menos transferencia tipográfica y render inicial más estable.",
+		}
+	case "main_thread_pressure":
+		return &RecommendedFix{
+			Summary: "Ejemplo de importación diferida para bajar trabajo de CPU del arranque.",
+			OptimizedCode: `import dynamic from "next/dynamic";
+
+const HeavyWidget = dynamic(() => import("./heavy-widget"), {
+  ssr: false,
+});
+
+export function DeferredWidget() {
+  return <HeavyWidget />;
+}`,
+			Changes: []string{
+				"El código pesado deja de competir con la hebra principal al inicio",
+				"Se aísla JS costoso fuera del camino crítico",
+			},
+			ExpectedImpact: "Menos Long Tasks y mejor respuesta percibida.",
+		}
+	default:
+		return nil
+	}
+}
+
+func buildExecutiveSummary(report ReportContext) string {
+	top := firstFinding(report.Analysis.Findings)
+	switch {
+	case top != nil && top.ID == "render_lcp_candidate":
+		return "El cuello de botella principal está en el render crítico: Wattless detectó un recurso que coincide con el LCP y concentra el mejor retorno inmediato."
+	case report.Analysis.Summary.RepeatedGalleryBytes >= 400_000 && report.Performance.LCPMS < 2_000:
+		return "La home es rápida en el primer render, pero el catálogo visual por debajo del fold infla el coste por visita más de lo que parece."
+	case report.Performance.LongTasksTotalMS >= 250:
+		return "El peso de red no explica todo el problema: hay presión real de CPU y Long Tasks que compiten con la experiencia inicial."
+	case report.Analysis.Summary.FontBytes >= 250_000:
+		return "La base es razonable, pero la pila tipográfica sigue siendo más cara de lo necesario para una carga inicial eficiente."
+	default:
+		return "El informe separa transferencia, render crítico y peso bajo el fold para que el siguiente arreglo tenga retorno real y no solo cambie un número aislado."
+	}
+}
+
+func buildPitchLine(report ReportContext) string {
+	switch {
+	case report.Analysis.Summary.RepeatedGalleryBytes >= 400_000 && report.Performance.LCPMS < 2_000:
+		return "Tu arranque ya va bien; ahora toca recortar el coste visual acumulado bajo el fold para bajar bytes sin sacrificar UX."
+	case report.Analysis.Summary.AnalyticsBytes >= 80_000:
+		return "Separar render crítico de sobrecarga de terceros te da una mejora doble: menos variabilidad y menos CO2 por visita."
+	case report.Performance.LongTasksTotalMS >= 250:
+		return "Aquí no basta con comprimir archivos: reducir trabajo real de CPU es lo que devolverá fluidez al arranque."
+	default:
+		return "Menos bytes donde importan y menos ruido donde no aportan valor: esa es la diferencia entre una web ligera y una web defendible."
+	}
+}
+
+func firstFinding(findings []AnalysisFindingContext) *AnalysisFindingContext {
+	if len(findings) == 0 {
+		return nil
+	}
+	return &findings[0]
+}
+
+func trimEvidence(evidence []string, limit int) []string {
+	if len(evidence) <= limit {
+		return append([]string(nil), evidence...)
+	}
+	return append([]string(nil), evidence[:limit]...)
+}
+
+func conciseReason(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	return value
 }

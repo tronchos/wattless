@@ -109,6 +109,81 @@ export function formatImpactLabel(value: "high" | "medium" | "low"): string {
   }
 }
 
+export function formatSeverityLabel(value: "high" | "medium" | "low"): string {
+  switch (value) {
+    case "high":
+      return "Severidad alta";
+    case "medium":
+      return "Severidad media";
+    default:
+      return "Severidad baja";
+  }
+}
+
+export function formatConfidenceLabel(value: "high" | "medium" | "low"): string {
+  switch (value) {
+    case "high":
+      return "Confianza alta";
+    case "medium":
+      return "Confianza media";
+    default:
+      return "Confianza baja";
+  }
+}
+
+export function formatPositionBand(value: string): string {
+  switch (value) {
+    case "above_fold":
+      return "Above the fold";
+    case "near_fold":
+      return "Near fold";
+    case "below_fold":
+      return "Below the fold";
+    case "mixed":
+      return "Mixto";
+    default:
+      return "Sin banda";
+  }
+}
+
+export function formatThirdPartyKind(value: string): string {
+  switch (value) {
+    case "analytics":
+      return "Analytics";
+    case "ads":
+      return "Ads";
+    case "support":
+      return "Support";
+    case "social":
+      return "Social";
+    case "video_embed":
+      return "Video";
+    case "payment":
+      return "Payment";
+    default:
+      return "Third-party";
+  }
+}
+
+export function formatVisualRole(value: string): string {
+  switch (value) {
+    case "lcp_candidate":
+      return "LCP";
+    case "hero_media":
+      return "Hero";
+    case "repeated_card_media":
+      return "Repeated card";
+    case "above_fold_media":
+      return "Above the fold";
+    case "below_fold_media":
+      return "Below the fold";
+    case "decorative":
+      return "Decorative";
+    default:
+      return "Unknown";
+  }
+}
+
 export function formatEntropyLabel(score: string): string {
   switch (score) {
     case "A":
