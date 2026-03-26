@@ -40,7 +40,7 @@ func (RuleBasedProvider) SuggestResource(resource ResourceContext) string {
 	}
 }
 
-func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report ReportContext) (ScanInsights, error) {
+func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report ReportContext) (ProviderResult, error) {
 	findings := prioritizeFindings(report.Analysis.Findings)
 	actions := make([]TopAction, 0, 3)
 
@@ -71,12 +71,80 @@ func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report Repo
 	summary := buildExecutiveSummary(report)
 	pitchLine := buildPitchLine(report)
 
-	return ScanInsights{
-		Provider:         provider.Name(),
-		ExecutiveSummary: summary,
-		PitchLine:        pitchLine,
-		TopActions:       actions,
+	assetInsights := make([]AssetInsightDraft, 0, len(report.TopResources))
+	for _, asset := range report.TopResources {
+		assetInsights = append(assetInsights, BuildRuleBasedAssetInsight(asset, report.Analysis.Findings, actions))
+	}
+
+	return ProviderResult{
+		Insights: ScanInsights{
+			Provider:         provider.Name(),
+			ExecutiveSummary: summary,
+			PitchLine:        pitchLine,
+			TopActions:       actions,
+		},
+		AssetInsights: assetInsights,
 	}, nil
+}
+
+func BuildRuleBasedAssetInsight(
+	asset ResourceContext,
+	findings []AnalysisFindingContext,
+	actions []TopAction,
+) AssetInsightDraft {
+	finding := matchAssetFinding(asset, findings)
+	action := matchAssetAction(asset, actions, finding)
+
+	title := assetTitle(asset, finding)
+	shortProblem := assetShortProblem(asset, finding)
+	whyItMatters := assetWhyItMatters(asset, finding)
+	recommendedAction := conciseReason(SuggestRuleBasedResource(asset))
+	if action != nil && strings.TrimSpace(action.Reason) != "" {
+		recommendedAction = conciseReason(action.Reason)
+	}
+
+	confidence := "low"
+	if finding != nil && finding.Confidence != "" {
+		confidence = finding.Confidence
+	} else if action != nil && action.Confidence != "" {
+		confidence = action.Confidence
+	}
+
+	impact := inferAssetLCPImpact(asset, finding, action)
+	evidence := assetEvidence(asset, finding, action)
+
+	scope := "asset"
+	if finding != nil && len(finding.RelatedResourceIDs) > 1 {
+		scope = "group"
+	}
+	if finding == nil && action == nil {
+		scope = "global"
+	}
+
+	draft := AssetInsightDraft{
+		ResourceID:        asset.ID,
+		Title:             title,
+		ShortProblem:      shortProblem,
+		WhyItMatters:      whyItMatters,
+		RecommendedAction: recommendedAction,
+		Confidence:        confidence,
+		LikelyLCPImpact:   impact,
+		Evidence:          evidence,
+		Scope:             scope,
+		Source:            "rule_based",
+	}
+	if finding != nil {
+		draft.RelatedFindingID = finding.ID
+	}
+	if action != nil {
+		draft.RelatedActionID = action.ID
+		draft.RecommendedFix = action.RecommendedFix
+	}
+	return draft
+}
+
+func SuggestRuleBasedResource(resource ResourceContext) string {
+	return NewRuleBasedProvider().SuggestResource(resource)
 }
 
 func prioritizeFindings(findings []AnalysisFindingContext) []AnalysisFindingContext {
@@ -323,4 +391,241 @@ func conciseReason(value string) string {
 		return value
 	}
 	return value
+}
+
+func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext) *AnalysisFindingContext {
+	var best *AnalysisFindingContext
+	for index := range findings {
+		finding := &findings[index]
+		if containsString(finding.RelatedResourceIDs, asset.ID) {
+			if best == nil || findingBetter(*finding, *best) {
+				best = finding
+			}
+		}
+	}
+	if best != nil {
+		return best
+	}
+
+	candidates := make([]*AnalysisFindingContext, 0, len(findings))
+	for index := range findings {
+		finding := &findings[index]
+		switch {
+		case asset.VisualRole == "repeated_card_media" && finding.ID == "below_fold_gallery_waste":
+			candidates = append(candidates, finding)
+		case asset.VisualRole == "lcp_candidate" && finding.ID == "render_lcp_candidate":
+			candidates = append(candidates, finding)
+		case (asset.VisualRole == "hero_media" || asset.VisualRole == "above_fold_media") && finding.ID == "heavy_above_fold_media":
+			candidates = append(candidates, finding)
+		case asset.Type == "font" && finding.ID == "font_stack_overweight":
+			candidates = append(candidates, finding)
+		case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics" && finding.ID == "third_party_analytics_overhead":
+			candidates = append(candidates, finding)
+		case asset.Type == "script" && finding.ID == "main_thread_pressure":
+			candidates = append(candidates, finding)
+		}
+	}
+	for _, finding := range candidates {
+		if best == nil || findingBetter(*finding, *best) {
+			best = finding
+		}
+	}
+	return best
+}
+
+func matchAssetAction(asset ResourceContext, actions []TopAction, finding *AnalysisFindingContext) *TopAction {
+	for index := range actions {
+		if containsString(actions[index].RelatedResourceIDs, asset.ID) {
+			return &actions[index]
+		}
+	}
+	if finding == nil {
+		return nil
+	}
+	for index := range actions {
+		if actions[index].RelatedFindingID == finding.ID {
+			return &actions[index]
+		}
+	}
+	return nil
+}
+
+func findingBetter(left, right AnalysisFindingContext) bool {
+	if SeverityRank(left.Severity) == SeverityRank(right.Severity) {
+		if ConfidenceRank(left.Confidence) == ConfidenceRank(right.Confidence) {
+			if left.EstimatedSavingsBytes == right.EstimatedSavingsBytes {
+				return left.ID < right.ID
+			}
+			return left.EstimatedSavingsBytes > right.EstimatedSavingsBytes
+		}
+		return ConfidenceRank(left.Confidence) > ConfidenceRank(right.Confidence)
+	}
+	return SeverityRank(left.Severity) > SeverityRank(right.Severity)
+}
+
+func assetTitle(asset ResourceContext, finding *AnalysisFindingContext) string {
+	if finding != nil && strings.TrimSpace(finding.Title) != "" {
+		return finding.Title
+	}
+	switch {
+	case asset.Type == "font":
+		return "Coste tipográfico concentrado"
+	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics":
+		return "Sobrecarga de analítica"
+	case asset.VisualRole == "lcp_candidate":
+		return "Candidato real al LCP"
+	case asset.VisualRole == "repeated_card_media":
+		return "Media repetida en el catálogo"
+	case asset.Type == "script":
+		return "Script con presión innecesaria"
+	default:
+		return "Activo dominante a revisar"
+	}
+}
+
+func assetShortProblem(asset ResourceContext, finding *AnalysisFindingContext) string {
+	if finding != nil && strings.TrimSpace(finding.Summary) != "" {
+		switch finding.ID {
+		case "below_fold_gallery_waste":
+			switch asset.PositionBand {
+			case "below_fold":
+				return "Este asset forma parte de una galería repetida bajo el fold que acumula más peso del necesario."
+			case "near_fold":
+				return "Este asset forma parte de una galería repetida cerca del fold que suma transferencia poco rentable."
+			default:
+				return "Este asset forma parte de una galería repetida que dispara el coste visual acumulado."
+			}
+		case "render_lcp_candidate":
+			return "Este recurso coincide con el LCP observado y concentra uno de los mejores puntos de ataque."
+		case "heavy_above_fold_media":
+			return "Este media vive en la zona visible inicial y pesa más de lo razonable para su rol."
+		case "third_party_analytics_overhead":
+			return "Esta dependencia de analítica añade coste de red y variabilidad sin aportar al render inicial."
+		case "font_stack_overweight":
+			return "Este archivo forma parte de una pila tipográfica más pesada de lo necesario."
+		case "main_thread_pressure":
+			return "Este script participa en un arranque con presión real de CPU."
+		case "render_lcp_dom_node":
+			return "El LCP observado es textual o del DOM; este asset se relaciona más con soporte que con media crítica."
+		}
+	}
+	switch {
+	case asset.Failed:
+		return "La petición falló y sigue contando como deuda técnica del flujo auditado."
+	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics":
+		return "La analítica suma carga de red sin ayudar al contenido visible."
+	case asset.VisualRole == "repeated_card_media":
+		return "Este asset se repite en un listado visual y escala mal cuando crece el catálogo."
+	case asset.VisualRole == "lcp_candidate":
+		return "Este asset domina el render crítico observado."
+	case asset.Type == "font":
+		return "El coste tipográfico de este archivo es alto para una primera visita."
+	default:
+		return "Este asset concentra demasiado peso para el valor que aporta."
+	}
+}
+
+func assetWhyItMatters(asset ResourceContext, finding *AnalysisFindingContext) string {
+	if finding != nil {
+		switch finding.Category {
+		case "render":
+			return "Afecta directamente al tiempo hasta que el usuario percibe el contenido principal o a la estabilidad del arranque."
+		case "media":
+			return "No siempre frena el primer render, pero sí eleva transferencia, CO2 y coste acumulado por visita."
+		case "third_party":
+			return "Introduce variabilidad externa y compite con recursos propios durante la carga."
+		case "fonts":
+			return "La tipografía pesa en la carga inicial aunque el sitio no se vea lento a simple vista."
+		case "network":
+			return "El coste no es solo de bytes: también se traduce en más trabajo y más incertidumbre en producción."
+		}
+	}
+	switch {
+	case asset.Type == "font":
+		return "Las fuentes impactan el primer render incluso cuando su peso parece pequeño frente a las imágenes."
+	case asset.Type == "script":
+		return "Los scripts pueden competir con el render y elevar Long Tasks aunque no sean el archivo más pesado."
+	case asset.VisualRole == "repeated_card_media":
+		return "Multiplicado por todo el grid, este patrón sube rápido el coste total por visita."
+	default:
+		return "Reducir este recurso mejora la eficiencia sin tocar partes del sitio menos relevantes."
+	}
+}
+
+func assetEvidence(asset ResourceContext, finding *AnalysisFindingContext, action *TopAction) []string {
+	evidence := make([]string, 0, 3)
+	if asset.Bytes > 0 {
+		evidence = append(evidence, fmt.Sprintf("Transfiere %s.", formatBytes(asset.Bytes)))
+	}
+	if asset.PositionBand != "" && asset.PositionBand != "unknown" {
+		evidence = append(evidence, fmt.Sprintf("Se ubica en %s.", strings.ReplaceAll(asset.PositionBand, "_", " ")))
+	}
+	if asset.VisualRole != "" && asset.VisualRole != "unknown" {
+		evidence = append(evidence, fmt.Sprintf("Rol visual: %s.", strings.ReplaceAll(asset.VisualRole, "_", " ")))
+	}
+	if len(evidence) < 3 && finding != nil {
+		for _, item := range trimEvidence(finding.Evidence, 3) {
+			if item == "" || containsString(evidence, item) {
+				continue
+			}
+			evidence = append(evidence, item)
+			if len(evidence) == 3 {
+				break
+			}
+		}
+	}
+	if len(evidence) < 3 && action != nil {
+		for _, item := range trimEvidence(action.Evidence, 3) {
+			if item == "" || containsString(evidence, item) {
+				continue
+			}
+			evidence = append(evidence, item)
+			if len(evidence) == 3 {
+				break
+			}
+		}
+	}
+	return evidence
+}
+
+func inferAssetLCPImpact(asset ResourceContext, finding *AnalysisFindingContext, action *TopAction) string {
+	if action != nil && action.LikelyLCPImpact != "" {
+		return action.LikelyLCPImpact
+	}
+	if finding != nil {
+		switch finding.ID {
+		case "render_lcp_candidate":
+			return "high"
+		case "render_lcp_dom_node", "heavy_above_fold_media", "main_thread_pressure":
+			return "medium"
+		}
+	}
+	switch asset.VisualRole {
+	case "lcp_candidate":
+		return "high"
+	case "hero_media", "above_fold_media":
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func formatBytes(bytes int64) string {
+	switch {
+	case bytes >= 1_000_000:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/1_000_000)
+	case bytes >= 1_000:
+		return fmt.Sprintf("%.0f KB", float64(bytes)/1_000)
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }

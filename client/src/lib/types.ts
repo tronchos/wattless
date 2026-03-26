@@ -5,7 +5,7 @@ export interface BoundingBox {
   height: number;
 }
 
-export interface RecommendedFix {
+export interface FixSuggestion {
   summary: string;
   optimized_code: string;
   changes: string[];
@@ -22,7 +22,22 @@ export interface TopAction {
   estimated_savings_bytes: number;
   likely_lcp_impact: "high" | "medium" | "low";
   related_resource_ids: string[];
-  recommended_fix?: RecommendedFix;
+  recommended_fix?: FixSuggestion;
+}
+
+export interface AssetInsight {
+  source: "gemini" | "rule_based" | "hybrid";
+  scope: "asset" | "group" | "global";
+  title: string;
+  short_problem: string;
+  why_it_matters: string;
+  recommended_action: string;
+  confidence: "high" | "medium" | "low";
+  likely_lcp_impact: "high" | "medium" | "low";
+  related_finding_id?: string;
+  related_action_id?: string;
+  evidence: string[];
+  recommended_fix?: FixSuggestion;
 }
 
 export interface ScanInsights {
@@ -45,7 +60,6 @@ export interface VampireElement {
   failure_reason: string;
   transfer_share: number;
   estimated_savings_bytes: number;
-  recommendation: string;
   position_band: "above_fold" | "near_fold" | "below_fold" | "unknown" | "mixed";
   visual_role:
     | "lcp_candidate"
@@ -68,6 +82,7 @@ export interface VampireElement {
     | "video_embed"
     | "payment"
     | "unknown";
+  asset_insight: AssetInsight;
   bounding_box: BoundingBox | null;
 }
 

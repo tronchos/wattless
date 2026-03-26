@@ -56,3 +56,35 @@ func TestBuildPitchLineAvoidsBelowFoldClaimForMixedGallery(t *testing.T) {
 		t.Fatalf("expected conservative pitch, got %q", pitch)
 	}
 }
+
+func TestBuildRuleBasedAssetInsightAvoidsBelowFoldClaimForMixedGalleryAsset(t *testing.T) {
+	draft := BuildRuleBasedAssetInsight(
+		ResourceContext{
+			ID:           "card-1",
+			Type:         "image",
+			Bytes:        220_000,
+			PositionBand: "mixed",
+			VisualRole:   "repeated_card_media",
+		},
+		[]AnalysisFindingContext{
+			{
+				ID:                    "below_fold_gallery_waste",
+				Category:              "media",
+				Severity:              "medium",
+				Confidence:            "high",
+				Title:                 "Galería repetida sobredimensionada",
+				Summary:               "La galería repetida suma demasiado peso para el valor que aporta.",
+				EstimatedSavingsBytes: 180_000,
+				RelatedResourceIDs:    []string{"card-1", "card-2", "card-3"},
+			},
+		},
+		nil,
+	)
+
+	if strings.Contains(strings.ToLower(draft.ShortProblem), "below the fold") {
+		t.Fatalf("expected conservative asset copy, got %q", draft.ShortProblem)
+	}
+	if draft.Scope != "group" {
+		t.Fatalf("expected group scope, got %q", draft.Scope)
+	}
+}

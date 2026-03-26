@@ -13,7 +13,6 @@ type ResourceContext struct {
 	FailureReason         string  `json:"failure_reason,omitempty"`
 	TransferShare         float64 `json:"transfer_share,omitempty"`
 	EstimatedSavingsBytes int64   `json:"estimated_savings_bytes,omitempty"`
-	Recommendation        string  `json:"recommendation,omitempty"`
 	PositionBand          string  `json:"position_band,omitempty"`
 	VisualRole            string  `json:"visual_role,omitempty"`
 	DOMTag                string  `json:"dom_tag,omitempty"`
@@ -125,6 +124,22 @@ type TopAction struct {
 	RecommendedFix        *RecommendedFix `json:"recommended_fix,omitempty"`
 }
 
+type AssetInsightDraft struct {
+	ResourceID        string           `json:"resource_id"`
+	Title             string           `json:"title"`
+	ShortProblem      string           `json:"short_problem"`
+	WhyItMatters      string           `json:"why_it_matters"`
+	RecommendedAction string           `json:"recommended_action"`
+	Confidence        string           `json:"confidence"`
+	LikelyLCPImpact   string           `json:"likely_lcp_impact"`
+	RelatedFindingID  string           `json:"related_finding_id,omitempty"`
+	RelatedActionID   string           `json:"related_action_id,omitempty"`
+	Evidence          []string         `json:"evidence"`
+	RecommendedFix    *RecommendedFix  `json:"recommended_fix,omitempty"`
+	Scope             string           `json:"scope"`
+	Source            string           `json:"source"`
+}
+
 type ScanInsights struct {
 	Provider         string      `json:"provider"`
 	ExecutiveSummary string      `json:"executive_summary"`
@@ -132,8 +147,13 @@ type ScanInsights struct {
 	TopActions       []TopAction `json:"top_actions"`
 }
 
+type ProviderResult struct {
+	Insights      ScanInsights
+	AssetInsights []AssetInsightDraft
+}
+
 type Provider interface {
 	Name() string
 	SuggestResource(ResourceContext) string
-	SummarizeReport(context.Context, ReportContext) (ScanInsights, error)
+	SummarizeReport(context.Context, ReportContext) (ProviderResult, error)
 }

@@ -12,8 +12,8 @@ func (failingProvider) Name() string { return "failing" }
 
 func (failingProvider) SuggestResource(resource ResourceContext) string { return "" }
 
-func (failingProvider) SummarizeReport(ctx context.Context, report ReportContext) (ScanInsights, error) {
-	return ScanInsights{}, errors.New("boom")
+func (failingProvider) SummarizeReport(ctx context.Context, report ReportContext) (ProviderResult, error) {
+	return ProviderResult{}, errors.New("boom")
 }
 
 func TestCompositeProviderFallsBackForSummary(t *testing.T) {
@@ -34,10 +34,10 @@ func TestCompositeProviderFallsBackForSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected fallback summary, got error: %v", err)
 	}
-	if result.Provider != "rule_based" {
-		t.Fatalf("expected fallback provider, got %s", result.Provider)
+	if result.Insights.Provider != "rule_based" {
+		t.Fatalf("expected fallback provider, got %s", result.Insights.Provider)
 	}
-	if result.ExecutiveSummary == "" {
+	if result.Insights.ExecutiveSummary == "" {
 		t.Fatal("expected executive summary")
 	}
 }

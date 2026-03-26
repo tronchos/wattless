@@ -79,9 +79,11 @@ export function createMarkdownReport(
     lines.push(...report.warnings.map((warning) => `- ${warning}`), ``);
   }
 
-  const firstAction = report.insights.top_actions[0];
-  if (firstAction?.recommended_fix) {
-    const fix = firstAction.recommended_fix;
+  const firstAssetFix =
+    report.vampire_elements.find((element) => element.asset_insight.recommended_fix)
+      ?.asset_insight.recommended_fix ?? report.insights.top_actions[0]?.recommended_fix;
+  if (firstAssetFix) {
+    const fix = firstAssetFix;
     lines.push(`## Wattless Optimization (Sugerencia Automatizada)`, ``);
     lines.push(fix.summary, ``);
     lines.push(...fix.changes.map((change) => `- ${change}`), ``);

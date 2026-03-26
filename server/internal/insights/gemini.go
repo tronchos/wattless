@@ -35,7 +35,7 @@ func (provider GeminiProvider) SuggestResource(resource ResourceContext) string 
 	return NewRuleBasedProvider().SuggestResource(resource)
 }
 
-func (provider GeminiProvider) SummarizeReport(ctx context.Context, report ReportContext) (ScanInsights, error) {
+func (provider GeminiProvider) SummarizeReport(ctx context.Context, report ReportContext) (ProviderResult, error) {
 	prompt := fmt.Sprintf(`Eres un arquitecto frontend especializado en rendimiento web y sostenibilidad.
 Devuelve JSON estricto sin markdown con esta forma:
 {
@@ -59,6 +59,27 @@ Devuelve JSON estricto sin markdown con esta forma:
         "expected_impact": "Impacto esperado"
       }
     }
+  ],
+  "asset_insights": [
+    {
+      "resource_id": string,
+      "title": string,
+      "short_problem": string,
+      "why_it_matters": string,
+      "recommended_action": string,
+      "confidence": "high"|"medium"|"low",
+      "likely_lcp_impact": "high"|"medium"|"low",
+      "related_finding_id": string,
+      "related_action_id": string,
+      "scope": "asset"|"group"|"global",
+      "evidence": [string],
+      "recommended_fix": {
+        "summary": "Explicación breve de la corrección",
+        "optimized_code": "Código React/Next de ejemplo",
+        "changes": ["Cambio 1", "Cambio 2"],
+        "expected_impact": "Impacto esperado"
+      }
+    }
   ]
 }
 
@@ -67,8 +88,15 @@ Reglas:
 - No inventes métricas fuera del contexto dado.
 - Máximo 3 acciones.
 - Cada acción debe referenciar un related_finding_id existente y al menos un related_resource_ids existente.
+- Los top_resources del contexto son también los focus_assets válidos para asset_insights.
+- asset_insights solo puede usar resource_id presentes en top_resources.
+- Máximo 1 asset_insight por resource_id.
+- Máximo 3 evidencias por asset.
+- short_problem, why_it_matters y recommended_action deben ser frases cortas.
+- Si el fix es demasiado genérico o no es seguro, omite recommended_fix en el asset.
 - Prioriza findings, no bytes crudos aislados.
 - No llames hero image a un recurso salvo que su visual_role sea hero_media o lcp_candidate.
+- No digas below the fold salvo que la evidencia de posición lo soporte.
 - Distingue claramente entre carga inicial y below-the-fold.
 - Si el LCP observado corresponde a un nodo del DOM sin asset asociado, habla de CSS, tipografía o CPU antes que de imágenes.
 - Usa el campo confidence para no sobreafirmar.
@@ -80,20 +108,24 @@ Contexto:
 %s`, mustJSON(report))
 
 	var payload struct {
-		ExecutiveSummary string      `json:"executive_summary"`
-		PitchLine        string      `json:"pitch_line"`
-		TopActions       []TopAction `json:"top_actions"`
+		ExecutiveSummary string              `json:"executive_summary"`
+		PitchLine        string              `json:"pitch_line"`
+		TopActions       []TopAction         `json:"top_actions"`
+		AssetInsights    []AssetInsightDraft `json:"asset_insights"`
 	}
 
 	if err := provider.generateJSON(ctx, prompt, &payload); err != nil {
-		return ScanInsights{}, err
+		return ProviderResult{}, err
 	}
 
-	return ScanInsights{
-		Provider:         provider.Name(),
-		ExecutiveSummary: strings.TrimSpace(payload.ExecutiveSummary),
-		PitchLine:        strings.TrimSpace(payload.PitchLine),
-		TopActions:       payload.TopActions,
+	return ProviderResult{
+		Insights: ScanInsights{
+			Provider:         provider.Name(),
+			ExecutiveSummary: strings.TrimSpace(payload.ExecutiveSummary),
+			PitchLine:        strings.TrimSpace(payload.PitchLine),
+			TopActions:       payload.TopActions,
+		},
+		AssetInsights: payload.AssetInsights,
 	}, nil
 }
 

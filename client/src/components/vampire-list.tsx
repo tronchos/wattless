@@ -7,6 +7,7 @@ import {
   formatThirdPartyKind,
   formatVisualRole,
 } from "@/lib/api";
+import { DominantAssetDetail } from "@/components/dominant-asset-detail";
 import type { VampireElement } from "@/lib/types";
 
 interface VampireListProps {
@@ -29,27 +30,16 @@ export const VampireList = memo(function VampireList({
     <div className="space-y-6 flex flex-col h-full">
       <h2 className="text-2xl font-bold font-headline text-on-surface">Dominant Assets</h2>
 
-      <div className="bg-surface-container-low rounded-xl overflow-hidden flex-1 border border-outline-variant/10">
-        <table className="w-full text-left text-sm block md:table" aria-label="Dominant asset list">
-          <thead className="bg-surface-container-high text-on-surface-variant uppercase text-[10px] tracking-widest block md:table-header-group">
-            <tr className="block md:table-row">
-              <th className="px-4 py-3 font-medium font-label">Type</th>
-              <th className="px-4 py-3 font-medium font-label">Size</th>
-              <th className="px-4 py-3 font-medium font-label">Impact</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-outline-variant/10 block md:table-row-group">
-            {elements.map((element) => (
-              <VampireRow
-                key={element.id}
-                element={element}
-                isActive={selectedElement?.id === element.id}
-                capturedHeight={capturedHeight}
-                onSelect={onSelect}
-              />
-            ))}
-          </tbody>
-        </table>
+      <div className="space-y-3">
+        {elements.map((element) => (
+          <VampireRow
+            key={element.id}
+            element={element}
+            isActive={selectedElement?.id === element.id}
+            capturedHeight={capturedHeight}
+            onSelect={onSelect}
+          />
+        ))}
       </div>
     </div>
   );
@@ -88,64 +78,82 @@ const VampireRow = memo(function VampireRow({
   }
 
   return (
-    <tr
-      role="button"
-      tabIndex={0}
-      aria-label={`Select asset ${element.url.split('/').pop() || element.type}`}
-      onClick={() => onSelect(element.id)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect(element.id);
-        }
-      }}
-      className={`cursor-pointer transition-colors block md:table-row ${
+    <article
+      className={`overflow-hidden rounded-[1.35rem] border transition-colors ${
         isActive
-          ? "bg-surface-container-highest"
-          : "hover:bg-surface-container-highest/50"
+          ? "border-primary/25 bg-surface-container-highest"
+          : "border-outline-variant/10 bg-surface-container-low hover:bg-surface-container"
       }`}
     >
-      <td className="px-4 py-4 font-body block md:table-cell">
-        <div className="text-on-surface truncate max-w-[150px] sm:max-w-[200px]" title={element.url}>
-           {element.url.split('/').pop() || formatResourceLabel(element.type)}
+      <button
+        type="button"
+        aria-label={`Select asset ${element.url.split("/").pop() || element.type}`}
+        onClick={() => onSelect(element.id)}
+        className="w-full px-4 py-4 text-left md:px-5"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-headline font-bold text-on-surface" title={element.url}>
+              {element.url.split("/").pop() || formatResourceLabel(element.type)}
+            </div>
+            <div className="mt-1 text-xs leading-5 text-on-surface-variant break-all">
+              {element.url}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-on-surface-variant">
+              <span className={`rounded-full px-2 py-0.5 font-label font-bold ${coverage.className}`}>
+                {coverage.label}
+              </span>
+              {badges.map((badge) => (
+                <span
+                  key={`${element.id}-${badge}`}
+                  className="rounded-full bg-surface-container-highest px-2 py-0.5 font-label font-bold text-on-surface-variant"
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid shrink-0 gap-2 text-right">
+            <div className="text-lg font-headline font-bold text-on-surface">
+              {formatBytes(element.bytes)}
+            </div>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold font-label ${
+                impactLevel === "HIGH"
+                  ? "bg-error-container text-on-error-container"
+                  : impactLevel === "MED"
+                    ? "bg-secondary-container text-on-secondary-container"
+                    : "bg-tertiary-container text-on-tertiary-container"
+              }`}
+            >
+              {impactLevel}
+            </span>
+          </div>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-on-surface-variant">
-           <span>{formatResourceLabel(element.type)}</span>
-           <span className={`rounded-full px-2 py-0.5 font-label font-bold ${coverage.className}`}>
-             {coverage.label}
-           </span>
-           {badges.map((badge) => (
-             <span
-               key={`${element.id}-${badge}`}
-               className="rounded-full bg-surface-container-highest px-2 py-0.5 font-label font-bold text-on-surface-variant"
-             >
-               {badge}
-             </span>
-           ))}
-        </div>
-      </td>
-      <td className="px-4 py-4 opacity-70 block md:table-cell">
-        {formatBytes(element.bytes)}
-      </td>
-      <td className="px-4 py-4 block md:table-cell">
-        {impactLevel === "HIGH" && (
-           <span className="bg-error-container text-on-error-container px-2 py-0.5 rounded-full text-[10px] font-bold font-label">HIGH</span>
-        )}
-        {impactLevel === "MED" && (
-           <span className="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full text-[10px] font-bold font-label">MED</span>
-        )}
-        {impactLevel === "LOW" && (
-           <span className="bg-tertiary-container text-on-tertiary-container px-2 py-0.5 rounded-full text-[10px] font-bold font-label">LOW</span>
-        )}
-      </td>
-    </tr>
+      </button>
+
+      {isActive ? (
+        <DominantAssetDetail
+          element={element}
+          coverageLabel={coverage.label}
+          coverageClassName={coverage.className}
+        />
+      ) : null}
+    </article>
   );
 });
 
 function buildBadges(element: VampireElement) {
-  const badges = [formatPositionBand(element.position_band)];
+  const badges = [formatResourceLabel(element.type)];
 
-  if (element.visual_role !== "unknown") {
+  if (element.position_band !== "unknown") {
+    badges.push(formatPositionBand(element.position_band));
+  }
+
+  if (element.visual_role === "lcp_candidate") {
+    badges.push("LCP");
+  } else if (element.visual_role !== "unknown") {
     badges.push(formatVisualRole(element.visual_role));
   }
   if (element.is_third_party_tool && element.third_party_kind !== "unknown") {
@@ -158,7 +166,7 @@ function buildBadges(element: VampireElement) {
   return badges.filter((badge, index, all) => badge && all.indexOf(badge) === index);
 }
 
-function getCoverageState(element: VampireElement, capturedHeight: number) {
+export function getCoverageState(element: VampireElement, capturedHeight: number) {
   if (!element.bounding_box) {
     return {
       label: "No visual anchor",

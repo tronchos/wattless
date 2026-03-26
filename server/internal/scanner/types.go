@@ -22,7 +22,6 @@ type ResourceSummary struct {
 	FailureReason         string       `json:"failure_reason"`
 	TransferShare         float64      `json:"transfer_share"`
 	EstimatedSavingsBytes int64        `json:"estimated_savings_bytes"`
-	Recommendation        string       `json:"recommendation"`
 	PositionBand          string       `json:"position_band"`
 	VisualRole            string       `json:"visual_role"`
 	DOMTag                string       `json:"dom_tag"`
@@ -31,7 +30,25 @@ type ResourceSummary struct {
 	ResponsiveImage       bool         `json:"responsive_image"`
 	IsThirdPartyTool      bool         `json:"is_third_party_tool"`
 	ThirdPartyKind        string       `json:"third_party_kind"`
+	AssetInsight          AssetInsight `json:"asset_insight"`
 	BoundingBox           *BoundingBox `json:"bounding_box"`
+}
+
+type FixSuggestion = insights.RecommendedFix
+
+type AssetInsight struct {
+	Source            string         `json:"source"`
+	Scope             string         `json:"scope"`
+	Title             string         `json:"title"`
+	ShortProblem      string         `json:"short_problem"`
+	WhyItMatters      string         `json:"why_it_matters"`
+	RecommendedAction string         `json:"recommended_action"`
+	Confidence        string         `json:"confidence"`
+	LikelyLCPImpact   string         `json:"likely_lcp_impact"`
+	RelatedFindingID  string         `json:"related_finding_id,omitempty"`
+	RelatedActionID   string         `json:"related_action_id,omitempty"`
+	Evidence          []string       `json:"evidence"`
+	RecommendedFix    *FixSuggestion `json:"recommended_fix,omitempty"`
 }
 
 type ResourceBreakdown struct {

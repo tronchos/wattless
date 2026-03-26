@@ -45,3 +45,95 @@ func TestSanitizeTopActionsFallsBackToVisibleVampire(t *testing.T) {
 		t.Fatalf("expected visible repeated card fallback, got %#v", sanitized[0].RelatedResourceIDs)
 	}
 }
+
+func TestAttachAssetInsightsIgnoresInvalidDraftsAndFallsBackPerAsset(t *testing.T) {
+	vampires := []ResourceSummary{
+		{
+			ID:                    "visible-card",
+			URL:                   "https://example.com/courses/course-1.webp",
+			Type:                  "image",
+			Bytes:                 220_000,
+			EstimatedSavingsBytes: 110_000,
+			PositionBand:          "mixed",
+			VisualRole:            visualRoleRepeatedCard,
+		},
+		{
+			ID:                    "visible-analytics",
+			URL:                   "https://us.i.posthog.com/static/array.js",
+			Type:                  "script",
+			Bytes:                 95_000,
+			EstimatedSavingsBytes: 40_000,
+			PositionBand:          "unknown",
+			IsThirdPartyTool:      true,
+			ThirdPartyKind:        thirdPartyAnalytics,
+		},
+	}
+	analysis := Analysis{
+		Findings: []AnalysisFinding{
+			{
+				ID:                    "below_fold_gallery_waste",
+				Category:              "media",
+				Severity:              "medium",
+				Confidence:            "high",
+				Title:                 "Galería repetida sobredimensionada",
+				Summary:               "La galería repetida suma demasiado peso para el valor que aporta.",
+				Evidence:              []string{"El grupo suma 600 KB."},
+				EstimatedSavingsBytes: 180_000,
+				RelatedResourceIDs:    []string{"visible-card"},
+			},
+		},
+	}
+	actions := []insights.TopAction{
+		{
+			ID:                 "act-1",
+			RelatedFindingID:   "below_fold_gallery_waste",
+			RelatedResourceIDs: []string{"visible-card"},
+			Reason:             "Optimiza el grid repetido con miniaturas más pequeñas.",
+			Confidence:         "high",
+			LikelyLCPImpact:    "low",
+			RecommendedFix: &insights.RecommendedFix{
+				Summary:       "Fix de catálogo repetido.",
+				OptimizedCode: "<Image />",
+			},
+		},
+	}
+	drafts := []insights.AssetInsightDraft{
+		{
+			ResourceID:        "missing-id",
+			Title:             "No debería sobrevivir",
+			ShortProblem:      "draft inválido",
+			WhyItMatters:      "draft inválido",
+			RecommendedAction: "draft inválido",
+			Confidence:        "high",
+			LikelyLCPImpact:   "low",
+		},
+		{
+			ResourceID:        "visible-analytics",
+			Title:             "Analítica con ruido evitable",
+			ShortProblem:      "Este tercero añade bytes antes de aportar valor visible.",
+			WhyItMatters:      "Suma variabilidad al arranque.",
+			RecommendedAction: "Retrásala hasta interacción.",
+			Confidence:        "high",
+			LikelyLCPImpact:   "low",
+			Scope:             "asset",
+			Source:            "gemini",
+		},
+	}
+
+	enriched := attachAssetInsights(vampires, analysis, actions, drafts)
+	if enriched[0].AssetInsight.Source != "rule_based" {
+		t.Fatalf("expected fallback rule_based source, got %q", enriched[0].AssetInsight.Source)
+	}
+	if enriched[0].AssetInsight.RelatedActionID != "act-1" {
+		t.Fatalf("expected related action id, got %q", enriched[0].AssetInsight.RelatedActionID)
+	}
+	if enriched[0].AssetInsight.RecommendedFix == nil {
+		t.Fatal("expected fallback fix to be preserved")
+	}
+	if enriched[1].AssetInsight.Source != "hybrid" {
+		t.Fatalf("expected hybrid source for partially merged draft, got %q", enriched[1].AssetInsight.Source)
+	}
+	if enriched[1].AssetInsight.Title != "Analítica con ruido evitable" {
+		t.Fatalf("expected gemini title, got %q", enriched[1].AssetInsight.Title)
+	}
+}

@@ -37,12 +37,12 @@ func (provider CompositeProvider) SuggestResource(resource ResourceContext) stri
 	return ""
 }
 
-func (provider CompositeProvider) SummarizeReport(ctx context.Context, report ReportContext) (ScanInsights, error) {
+func (provider CompositeProvider) SummarizeReport(ctx context.Context, report ReportContext) (ProviderResult, error) {
 	if provider.primary != nil {
 		result, err := provider.primary.SummarizeReport(ctx, report)
-		if err == nil && result.ExecutiveSummary != "" {
-			if result.Provider == "" {
-				result.Provider = provider.primary.Name()
+		if err == nil && result.Insights.ExecutiveSummary != "" {
+			if result.Insights.Provider == "" {
+				result.Insights.Provider = provider.primary.Name()
 			}
 			return result, nil
 		}
@@ -55,11 +55,11 @@ func (provider CompositeProvider) SummarizeReport(ctx context.Context, report Re
 
 	if provider.fallback != nil {
 		result, err := provider.fallback.SummarizeReport(ctx, report)
-		if result.Provider == "" {
-			result.Provider = provider.fallback.Name()
+		if result.Insights.Provider == "" {
+			result.Insights.Provider = provider.fallback.Name()
 		}
 		return result, err
 	}
 
-	return ScanInsights{}, nil
+	return ProviderResult{}, nil
 }

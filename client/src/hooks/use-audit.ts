@@ -10,10 +10,19 @@ export const scanProgressLabels = [
 ];
 
 function resolvePreferredElement(report: ScanReport): VampireElement | null {
+  const withFix = report.vampire_elements.find(
+    (element) => element.asset_insight.recommended_fix,
+  );
+  if (withFix) {
+    return withFix;
+  }
+
   const action = report.insights.top_actions[0];
   if (action) {
     const matching = report.vampire_elements.find(
-      (element) => action.related_resource_ids.includes(element.id)
+      (element) =>
+        element.asset_insight.related_action_id === action.id ||
+        action.related_resource_ids.includes(element.id),
     );
     if (matching) return matching;
   }

@@ -99,26 +99,6 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 			FailureReason:         resource.FailureReason,
 			TransferShare:         shareOf(resource.Bytes, totalBytes),
 			EstimatedSavingsBytes: savings,
-			Recommendation: s.insights.SuggestResource(insights.ResourceContext{
-				ID:                    resource.ID,
-				URL:                   resource.URL,
-				Type:                  resource.Type,
-				MIMEType:              resource.MIMEType,
-				Bytes:                 resource.Bytes,
-				StatusCode:            resource.StatusCode,
-				Failed:                resource.Failed,
-				FailureReason:         resource.FailureReason,
-				TransferShare:         shareOf(resource.Bytes, totalBytes),
-				EstimatedSavingsBytes: savings,
-				PositionBand:          resource.PositionBand,
-				VisualRole:            resource.VisualRole,
-				DOMTag:                resource.DOMTag,
-				LoadingAttr:           resource.LoadingAttr,
-				FetchPriority:         resource.FetchPriority,
-				ResponsiveImage:       resource.ResponsiveImage,
-				IsThirdPartyTool:      resource.IsThirdPartyTool,
-				ThirdPartyKind:        resource.ThirdPartyKind,
-			}),
 			PositionBand:     resource.PositionBand,
 			VisualRole:       resource.VisualRole,
 			DOMTag:           resource.DOMTag,
@@ -156,7 +136,7 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 		Warnings:              warnings,
 	}
 
-	insightReport, err := s.insights.SummarizeReport(ctx, insights.ReportContext{
+	reportContext := insights.ReportContext{
 		URL:                   report.URL,
 		Score:                 report.Score,
 		TotalBytesTransferred: report.TotalBytesTransferred,
@@ -188,13 +168,27 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 		},
 		Analysis:     makeInsightAnalysis(report.Analysis),
 		TopResources: makeInsightResources(vampires),
-	})
+	}
+
+	providerResult, err := s.insights.SummarizeReport(ctx, reportContext)
 	if err != nil {
 		s.logger.Warn("report_insights_failed", "url", normalizedURL, "error", err)
 		report.Warnings = append(report.Warnings, "La capa de IA no pudo enriquecer el informe; se usaron recomendaciones de respaldo.")
-	} else {
-		report.Insights = sanitizeInsightReport(insightReport, report.Analysis.Findings, vampires)
+		fallbackResult, fallbackErr := insights.NewRuleBasedProvider().SummarizeReport(ctx, reportContext)
+		if fallbackErr != nil {
+			s.logger.Warn("report_insights_fallback_failed", "url", normalizedURL, "error", fallbackErr)
+		} else {
+			providerResult = fallbackResult
+		}
 	}
+	providerResult.Insights = sanitizeInsightReport(providerResult.Insights, report.Analysis.Findings, vampires)
+	report.Insights = providerResult.Insights
+	report.VampireElements = attachAssetInsights(
+		vampires,
+		report.Analysis,
+		report.Insights.TopActions,
+		providerResult.AssetInsights,
+	)
 
 	report.Meta = buildMeta(startedAt, time.Now())
 
@@ -922,7 +916,6 @@ func makeInsightResources(resources []ResourceSummary) []insights.ResourceContex
 			FailureReason:         resource.FailureReason,
 			TransferShare:         resource.TransferShare,
 			EstimatedSavingsBytes: resource.EstimatedSavingsBytes,
-			Recommendation:        resource.Recommendation,
 			PositionBand:          resource.PositionBand,
 			VisualRole:            resource.VisualRole,
 			DOMTag:                resource.DOMTag,
