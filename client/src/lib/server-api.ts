@@ -8,8 +8,8 @@ let resolvedScannerURL: string | null = null;
 let pendingScannerURL: Promise<string> | null = null;
 
 async function getScannerAPIURL(): Promise<string> {
-  if (process.env.SCANNER_API_URL) {
-    return process.env.SCANNER_API_URL;
+  if (process.env.SCANNER_API_URL?.trim()) {
+    return process.env.SCANNER_API_URL.trim();
   }
 
   if (process.env.NODE_ENV === "production") {

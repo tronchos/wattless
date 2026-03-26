@@ -1,7 +1,5 @@
 import type {
   APIErrorPayload,
-  GreenFixRequest,
-  GreenFixResponse,
   ScanReport,
 } from "@/lib/types";
 
@@ -21,26 +19,6 @@ export async function scanURL(url: string): Promise<ScanReport> {
   }
 
   return (await response.json()) as ScanReport;
-}
-
-export async function generateGreenFix(
-  request: GreenFixRequest,
-): Promise<GreenFixResponse> {
-  const response = await fetch("/api/green-fix", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(request),
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as APIErrorPayload | null;
-    throw new Error(payload?.error ?? "No se pudo generar el Green Fix");
-  }
-
-  return (await response.json()) as GreenFixResponse;
 }
 
 export function formatBytes(bytes: number): string {

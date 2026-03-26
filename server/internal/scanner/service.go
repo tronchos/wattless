@@ -193,7 +193,7 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 		s.logger.Warn("report_insights_failed", "url", normalizedURL, "error", err)
 		report.Warnings = append(report.Warnings, "La capa de IA no pudo enriquecer el informe; se usaron recomendaciones de respaldo.")
 	} else {
-		report.Insights = insightReport
+		report.Insights = sanitizeInsightReport(insightReport, report.Analysis.Findings, vampires)
 	}
 
 	report.Meta = buildMeta(startedAt, time.Now())
@@ -983,6 +983,104 @@ func makeInsightAnalysis(analysis Analysis) insights.AnalysisContext {
 		Findings:       findings,
 		ResourceGroups: groups,
 	}
+}
+
+func sanitizeInsightReport(result insights.ScanInsights, findings []AnalysisFinding, vampires []ResourceSummary) insights.ScanInsights {
+	result.TopActions = sanitizeTopActions(result.TopActions, findings, vampires)
+	return result
+}
+
+func sanitizeTopActions(actions []insights.TopAction, findings []AnalysisFinding, vampires []ResourceSummary) []insights.TopAction {
+	if len(actions) == 0 {
+		return actions
+	}
+
+	visibleIDs := make(map[string]struct{}, len(vampires))
+	for _, vampire := range vampires {
+		visibleIDs[vampire.ID] = struct{}{}
+	}
+
+	findingsByID := make(map[string]AnalysisFinding, len(findings))
+	for _, finding := range findings {
+		findingsByID[finding.ID] = finding
+	}
+
+	output := append([]insights.TopAction(nil), actions...)
+	for index := range output {
+		related := filterVisibleActionResourceIDs(output[index].RelatedResourceIDs, visibleIDs)
+		if len(related) == 0 {
+			if finding, ok := findingsByID[output[index].RelatedFindingID]; ok {
+				related = filterVisibleActionResourceIDs(finding.RelatedResourceIDs, visibleIDs)
+			}
+		}
+		if len(related) == 0 {
+			if fallback := fallbackTopActionResourceID(output[index].RelatedFindingID, vampires); fallback != "" {
+				related = []string{fallback}
+			}
+		}
+		output[index].RelatedResourceIDs = related
+	}
+
+	return output
+}
+
+func filterVisibleActionResourceIDs(ids []string, visibleIDs map[string]struct{}) []string {
+	filtered := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := visibleIDs[id]; !ok {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		filtered = append(filtered, id)
+	}
+	return filtered
+}
+
+func fallbackTopActionResourceID(findingID string, vampires []ResourceSummary) string {
+	for _, vampire := range vampires {
+		switch findingID {
+		case "render_lcp_candidate":
+			if vampire.VisualRole == visualRoleLCPCandidate || vampire.VisualRole == visualRoleHeroMedia || vampire.VisualRole == visualRoleAboveFoldMedia {
+				return vampire.ID
+			}
+		case "render_lcp_dom_node":
+			if vampire.Type == "font" || vampire.Type == "stylesheet" || vampire.Type == "script" {
+				return vampire.ID
+			}
+			if vampire.VisualRole == visualRoleLCPCandidate || vampire.VisualRole == visualRoleHeroMedia || vampire.VisualRole == visualRoleAboveFoldMedia {
+				return vampire.ID
+			}
+		case "below_fold_gallery_waste":
+			if vampire.VisualRole == visualRoleRepeatedCard || vampire.VisualRole == visualRoleBelowFoldMedia || vampire.Type == "image" {
+				return vampire.ID
+			}
+		case "third_party_analytics_overhead":
+			if vampire.IsThirdPartyTool && vampire.ThirdPartyKind == thirdPartyAnalytics {
+				return vampire.ID
+			}
+		case "font_stack_overweight":
+			if vampire.Type == "font" {
+				return vampire.ID
+			}
+		case "main_thread_pressure":
+			if vampire.Type == "script" {
+				return vampire.ID
+			}
+		case "heavy_above_fold_media":
+			if vampire.VisualRole == visualRoleHeroMedia || vampire.VisualRole == visualRoleAboveFoldMedia {
+				return vampire.ID
+			}
+		}
+	}
+
+	if len(vampires) == 0 {
+		return ""
+	}
+	return vampires[0].ID
 }
 
 func stringValue[T any](value *T, project func(*T) string) string {

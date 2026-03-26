@@ -198,31 +198,6 @@ export interface ScanReport {
   warnings: string[];
 }
 
-export interface RefactorReportContext {
-  url: string;
-  score?: string;
-  co2_grams_per_visit?: number;
-  total_bytes_transferred?: number;
-  lcp_ms?: number;
-  fcp_ms?: number;
-}
-
-export interface GreenFixRequest {
-  framework: string;
-  language: string;
-  code: string;
-  related_resource_id?: string;
-  report_context: RefactorReportContext;
-}
-
-export interface GreenFixResponse {
-  provider: string;
-  summary: string;
-  optimized_code: string;
-  changes: string[];
-  expected_impact: string;
-}
-
 export interface APIErrorPayload {
   error: string;
 }

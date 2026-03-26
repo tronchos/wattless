@@ -96,7 +96,9 @@ export function ScanWorkbench() {
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                 <ScanSearch className="h-5 w-5 text-outline" />
               </div>
+              <label htmlFor="scan-url-input" className="sr-only">URL a analizar</label>
               <input
+                id="scan-url-input"
                 type="text"
                 inputMode="url"
                 value={inputURL}

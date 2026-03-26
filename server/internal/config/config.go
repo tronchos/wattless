@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -48,6 +49,18 @@ func Load() Config {
 		GeminiModel:                 envOrDefault("GEMINI_MODEL", "gemini-2.0-flash"),
 		LLMTimeout:                  durationOrDefault("LLM_TIMEOUT", 12*time.Second),
 	}
+}
+
+func (cfg Config) Validate() error {
+	switch cfg.AIProvider {
+	case "rule_based", "gemini":
+	default:
+		return fmt.Errorf("unknown AI_PROVIDER %q: must be rule_based or gemini", cfg.AIProvider)
+	}
+	if cfg.AIProvider == "gemini" && cfg.GeminiAPIKey == "" {
+		return fmt.Errorf("GEMINI_API_KEY is required when AI_PROVIDER is gemini")
+	}
+	return nil
 }
 
 func envOrDefault(key, fallback string) string {

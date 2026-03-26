@@ -1,6 +1,9 @@
 package insights
 
-import "context"
+import (
+	"context"
+	"log/slog"
+)
 
 type CompositeProvider struct {
 	primary  Provider
@@ -25,11 +28,11 @@ func (provider CompositeProvider) Name() string {
 }
 
 func (provider CompositeProvider) SuggestResource(resource ResourceContext) string {
-	if provider.fallback != nil {
-		return provider.fallback.SuggestResource(resource)
-	}
 	if provider.primary != nil {
 		return provider.primary.SuggestResource(resource)
+	}
+	if provider.fallback != nil {
+		return provider.fallback.SuggestResource(resource)
 	}
 	return ""
 }
@@ -42,6 +45,11 @@ func (provider CompositeProvider) SummarizeReport(ctx context.Context, report Re
 				result.Provider = provider.primary.Name()
 			}
 			return result, nil
+		}
+		if err != nil {
+			slog.Warn("insights_primary_failed", "provider", provider.primary.Name(), "error", err)
+		} else {
+			slog.Warn("insights_primary_empty", "provider", provider.primary.Name())
 		}
 	}
 

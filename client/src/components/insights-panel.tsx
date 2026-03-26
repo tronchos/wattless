@@ -13,10 +13,17 @@ export function InsightsPanel({
   selectedElementID,
   onSelectElement,
 }: InsightsPanelProps) {
+  const resolveActionTargetID = (action: ScanReport["insights"]["top_actions"][number]) => {
+    const matching = report.vampire_elements.find((element) =>
+      action.related_resource_ids.includes(element.id)
+    );
+    return matching?.id ?? null;
+  };
+
   const activeAction =
     report.insights.top_actions.find(
       (a) => selectedElementID && a.related_resource_ids.includes(selectedElementID)
-    ) || report.insights.top_actions[0];
+    ) ?? report.insights.top_actions[0] ?? null;
 
   return (
     <section id="insights" className="surface-secondary rounded-[1.45rem] p-6 lg:p-8">
@@ -85,7 +92,7 @@ export function InsightsPanel({
                     key={action.id}
                     type="button"
                     onClick={() => {
-                      const nextID = action.related_resource_ids[0];
+                      const nextID = resolveActionTargetID(action);
                       if (nextID) {
                         onSelectElement(nextID);
                       }

@@ -1,6 +1,7 @@
 "use client";
 
-import { Copy, Download, FileText } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Check, Copy, Download, FileText } from "lucide-react";
 
 import { createMarkdownReport } from "@/lib/report-markdown";
 import type { ScanReport } from "@/lib/types";
@@ -12,10 +13,17 @@ interface MarkdownReportCardProps {
 export function MarkdownReportCard({
   report,
 }: MarkdownReportCardProps) {
-  const markdown = createMarkdownReport(report);
+  const markdown = useMemo(() => createMarkdownReport(report), [report]);
+  const [copied, setCopied] = useState(false);
 
   async function copyMarkdown() {
-    await navigator.clipboard.writeText(markdown);
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API not available
+    }
   }
 
   function downloadMarkdown() {
@@ -48,12 +56,18 @@ export function MarkdownReportCard({
         <div className="flex justify-center gap-4">
           <button
             onClick={copyMarkdown}
+            aria-label="Copy report as markdown"
             className="bg-surface-container-highest text-on-surface px-8 py-3 rounded-xl font-bold hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm"
           >
-            <Copy className="w-4 h-4" /> Copy Markdown
+            {copied ? (
+              <><Check className="w-4 h-4" /> Copied!</>
+            ) : (
+              <><Copy className="w-4 h-4" /> Copy Markdown</>
+            )}
           </button>
           <button
             onClick={downloadMarkdown}
+            aria-label="Download report as markdown file"
             className="bg-primary text-on-primary px-8 py-3 rounded-xl font-bold hover:bg-primary-dim transition-colors flex items-center gap-2 shadow-lg shadow-primary/10 text-sm"
           >
             <Download className="w-4 h-4" /> Export MD

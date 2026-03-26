@@ -51,9 +51,20 @@ export function useAudit() {
     async (event?: React.FormEvent<HTMLFormElement>) => {
       event?.preventDefault();
 
-      const nextURL = inputURL.trim();
+      let nextURL = inputURL.trim();
       if (!nextURL) {
         setScanError("Escribe una URL para empezar el análisis.");
+        return;
+      }
+
+      if (!/^https?:\/\//i.test(nextURL)) {
+        nextURL = `https://${nextURL}`;
+      }
+
+      try {
+        new URL(nextURL);
+      } catch {
+        setScanError("La URL no es válida. Verifica el formato e intenta de nuevo.");
         return;
       }
 

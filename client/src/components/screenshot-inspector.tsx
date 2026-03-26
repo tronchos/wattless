@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   formatBytes,
@@ -28,9 +28,15 @@ export function ScreenshotInspector({
   onSelect,
 }: ScreenshotInspectorProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const elementsWithAnchors = elements.filter((element) => element.bounding_box);
-  const visibleElements = elementsWithAnchors.filter((element) =>
-    isWithinCapturedRange(element.bounding_box, screenshot)
+  const elementsWithAnchors = useMemo(
+    () => elements.filter((element) => element.bounding_box),
+    [elements],
+  );
+  const visibleElements = useMemo(
+    () => elementsWithAnchors.filter((element) =>
+      isWithinCapturedRange(element.bounding_box, screenshot)
+    ),
+    [elementsWithAnchors, screenshot],
   );
   const isTruncated = screenshot.captured_height < screenshot.document_height;
 

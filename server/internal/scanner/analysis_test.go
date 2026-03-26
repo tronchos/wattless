@@ -1,6 +1,9 @@
 package scanner
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizeTypePrefersURLHints(t *testing.T) {
 	got := normalizeType("Other", "text/html", "https://example.com/favicon.ico")
@@ -215,6 +218,88 @@ func TestBuildAnalysisCreatesFindingsFromEvidence(t *testing.T) {
 	}
 }
 
+func TestBuildAnalysisCreatesTextLCPFindingWithoutAssetURL(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:           "font-1",
+			URL:          "https://example.com/fonts/brand.woff2",
+			Type:         "font",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        170_000,
+			PositionBand: positionUnknown,
+		},
+		{
+			ID:           "style-1",
+			URL:          "https://example.com/app.css",
+			Type:         "stylesheet",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        60_000,
+			PositionBand: positionUnknown,
+		},
+		{
+			ID:           "script-1",
+			URL:          "https://example.com/app.js",
+			Type:         "script",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        55_000,
+			PositionBand: positionUnknown,
+		},
+	}
+
+	analysis := buildAnalysis(resources, PerformanceMetrics{
+		LCPMS:           2200,
+		LCPResourceTag:  "h1",
+		LCPSelectorHint: "h1.hero-title",
+		LCPSize:         3200,
+	}, nil)
+
+	finding := findFinding(analysis.Findings, "render_lcp_dom_node")
+	if finding == nil {
+		t.Fatal("expected text lcp finding")
+	}
+	if len(finding.RelatedResourceIDs) == 0 {
+		t.Fatal("expected related resources for text lcp finding")
+	}
+	if !strings.Contains(strings.Join(finding.Evidence, " "), "h1.hero-title") {
+		t.Fatalf("expected selector hint in evidence, got %#v", finding.Evidence)
+	}
+}
+
+func TestBuildRepeatedGalleryFindingAvoidsBelowFoldClaimForMixedGroup(t *testing.T) {
+	resources := []enrichedResource{
+		{ID: "card-1", Type: "image", Bytes: 220_000},
+		{ID: "card-2", Type: "image", Bytes: 210_000},
+		{ID: "card-3", Type: "image", Bytes: 205_000},
+	}
+
+	finding := buildRepeatedGalleryFinding([]ResourceGroup{
+		{
+			ID:                 "group-cards",
+			Kind:               groupKindRepeatedGallery,
+			Label:              "Grid de tarjetas",
+			TotalBytes:         635_000,
+			ResourceCount:      3,
+			PositionBand:       "mixed",
+			RelatedResourceIDs: []string{"card-1", "card-2", "card-3"},
+		},
+	}, resources)
+
+	if finding == nil {
+		t.Fatal("expected repeated gallery finding")
+	}
+	title := strings.ToLower(finding.Title)
+	summary := strings.ToLower(finding.Summary)
+	if strings.Contains(title, "bajo el fold") {
+		t.Fatalf("expected conservative title, got %q", finding.Title)
+	}
+	if strings.Contains(summary, "no frena el primer render") {
+		t.Fatalf("expected conservative summary, got %q", finding.Summary)
+	}
+}
+
 func hasFinding(findings []AnalysisFinding, id string) bool {
 	for _, finding := range findings {
 		if finding.ID == id {
@@ -222,4 +307,13 @@ func hasFinding(findings []AnalysisFinding, id string) bool {
 		}
 	}
 	return false
+}
+
+func findFinding(findings []AnalysisFinding, id string) *AnalysisFinding {
+	for index := range findings {
+		if findings[index].ID == id {
+			return &findings[index]
+		}
+	}
+	return nil
 }

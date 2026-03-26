@@ -82,46 +82,29 @@ func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report Repo
 func prioritizeFindings(findings []AnalysisFindingContext) []AnalysisFindingContext {
 	sorted := append([]AnalysisFindingContext(nil), findings...)
 	sort.Slice(sorted, func(i, j int) bool {
-		if severityRank(sorted[i].Severity) == severityRank(sorted[j].Severity) {
-			if confidenceRank(sorted[i].Confidence) == confidenceRank(sorted[j].Confidence) {
+		if SeverityRank(sorted[i].Severity) == SeverityRank(sorted[j].Severity) {
+			if ConfidenceRank(sorted[i].Confidence) == ConfidenceRank(sorted[j].Confidence) {
 				if sorted[i].EstimatedSavingsBytes == sorted[j].EstimatedSavingsBytes {
 					return sorted[i].ID < sorted[j].ID
 				}
 				return sorted[i].EstimatedSavingsBytes > sorted[j].EstimatedSavingsBytes
 			}
-			return confidenceRank(sorted[i].Confidence) > confidenceRank(sorted[j].Confidence)
+			return ConfidenceRank(sorted[i].Confidence) > ConfidenceRank(sorted[j].Confidence)
 		}
-		return severityRank(sorted[i].Severity) > severityRank(sorted[j].Severity)
+		return SeverityRank(sorted[i].Severity) > SeverityRank(sorted[j].Severity)
 	})
 	return sorted
-}
-
-func severityRank(value string) int {
-	switch value {
-	case "high":
-		return 3
-	case "medium":
-		return 2
-	default:
-		return 1
-	}
-}
-
-func confidenceRank(value string) int {
-	switch value {
-	case "high":
-		return 3
-	case "medium":
-		return 2
-	default:
-		return 1
-	}
 }
 
 func findingImpact(finding AnalysisFindingContext) string {
 	switch finding.ID {
 	case "render_lcp_candidate":
 		return "high"
+	case "render_lcp_dom_node":
+		if finding.Severity == "high" {
+			return "high"
+		}
+		return "medium"
 	case "main_thread_pressure":
 		if finding.Severity == "high" {
 			return "high"
@@ -161,9 +144,34 @@ export function HeroAsset() {
 			},
 			ExpectedImpact: "Menos peso en el render crítico y mejor margen para el LCP.",
 		}
+	case "render_lcp_dom_node":
+		return &RecommendedFix{
+			Summary: "Punto de partida para un LCP textual: fuente disciplinada, CSS estable y menos trabajo bloqueante en el primer render.",
+			OptimizedCode: `import { Inter } from "next/font/google";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  preload: true,
+});
+
+export function HeroCopy() {
+  return (
+    <section>
+      <h1 className={inter.className}>Contenido crítico listo para pintar</h1>
+    </section>
+  );
+}`,
+			Changes: []string{
+				"Se reduce incertidumbre tipográfica en el nodo que domina el LCP",
+				"Se favorece una pintura estable sin depender de un asset visual pesado",
+				"El siguiente paso es revisar CSS crítico y Long Tasks del arranque",
+			},
+			ExpectedImpact: "Menos espera en el nodo textual que domina el render inicial.",
+		}
 	case "below_fold_gallery_waste":
 		return &RecommendedFix{
-			Summary: "Patrón para listas visuales bajo el fold: versiones más pequeñas y carga diferida por defecto.",
+			Summary: "Patrón para listas visuales repetidas del catálogo: versiones más pequeñas y carga diferida por defecto.",
 			OptimizedCode: `import Image from "next/image";
 
 export function CourseCard({ course }) {
@@ -181,7 +189,7 @@ export function CourseCard({ course }) {
   );
 }`,
 			Changes: []string{
-				"Lazy loading explícito para el grid no crítico",
+				"Lazy loading explícito para el grid repetido no crítico",
 				"Tamaño realista para miniaturas y tarjetas",
 				"Responsive sizes para no servir desktop en móvil",
 			},
@@ -246,11 +254,16 @@ export function DeferredWidget() {
 
 func buildExecutiveSummary(report ReportContext) string {
 	top := firstFinding(report.Analysis.Findings)
+	gallery := dominantRepeatedGalleryGroup(report.Analysis.ResourceGroups)
 	switch {
 	case top != nil && top.ID == "render_lcp_candidate":
 		return "El cuello de botella principal está en el render crítico: Wattless detectó un recurso que coincide con el LCP y concentra el mejor retorno inmediato."
-	case report.Analysis.Summary.RepeatedGalleryBytes >= 400_000 && report.Performance.LCPMS < 2_000:
+	case top != nil && top.ID == "render_lcp_dom_node":
+		return "El cuello de botella principal está en el render crítico: Wattless detectó un nodo del DOM que domina el LCP y conviene revisar CSS, tipografía y CPU antes de culpar assets visuales."
+	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
 		return "La home es rápida en el primer render, pero el catálogo visual por debajo del fold infla el coste por visita más de lo que parece."
+	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000:
+		return "La home es rápida en el primer render, pero el catálogo visual repetido sigue inflando el coste por visita más de lo que parece."
 	case report.Performance.LongTasksTotalMS >= 250:
 		return "El peso de red no explica todo el problema: hay presión real de CPU y Long Tasks que compiten con la experiencia inicial."
 	case report.Analysis.Summary.FontBytes >= 250_000:
@@ -261,9 +274,12 @@ func buildExecutiveSummary(report ReportContext) string {
 }
 
 func buildPitchLine(report ReportContext) string {
+	gallery := dominantRepeatedGalleryGroup(report.Analysis.ResourceGroups)
 	switch {
-	case report.Analysis.Summary.RepeatedGalleryBytes >= 400_000 && report.Performance.LCPMS < 2_000:
+	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
 		return "Tu arranque ya va bien; ahora toca recortar el coste visual acumulado bajo el fold para bajar bytes sin sacrificar UX."
+	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000:
+		return "Tu arranque ya va bien; ahora toca recortar el coste visual repetido del catálogo para bajar bytes sin sacrificar UX."
 	case report.Analysis.Summary.AnalyticsBytes >= 80_000:
 		return "Separar render crítico de sobrecarga de terceros te da una mejora doble: menos variabilidad y menos CO2 por visita."
 	case report.Performance.LongTasksTotalMS >= 250:
@@ -278,6 +294,20 @@ func firstFinding(findings []AnalysisFindingContext) *AnalysisFindingContext {
 		return nil
 	}
 	return &findings[0]
+}
+
+func dominantRepeatedGalleryGroup(groups []ResourceGroupContext) *ResourceGroupContext {
+	var candidate *ResourceGroupContext
+	for index := range groups {
+		group := &groups[index]
+		if group.Kind != "repeated_gallery" || group.TotalBytes < 400_000 {
+			continue
+		}
+		if candidate == nil || group.TotalBytes > candidate.TotalBytes {
+			candidate = group
+		}
+	}
+	return candidate
 }
 
 func trimEvidence(evidence []string, limit int) []string {

@@ -70,6 +70,7 @@ Reglas:
 - Prioriza findings, no bytes crudos aislados.
 - No llames hero image a un recurso salvo que su visual_role sea hero_media o lcp_candidate.
 - Distingue claramente entre carga inicial y below-the-fold.
+- Si el LCP observado corresponde a un nodo del DOM sin asset asociado, habla de CSS, tipografía o CPU antes que de imágenes.
 - Usa el campo confidence para no sobreafirmar.
 - No interpretes script_resource_duration_ms como bloqueo real; usa long_tasks_total_ms para hablar de presión de CPU.
 - El campo 'recommended_fix' debe incluirse obligatoriamente en al menos la primera top action (el cuello de botella crítico).
@@ -121,12 +122,13 @@ func (provider GeminiProvider) generateJSON(ctx context.Context, prompt string, 
 		return err
 	}
 
-	endpoint := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", provider.model, provider.apiKey)
+	endpoint := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", provider.model)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(rawBody))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", provider.apiKey)
 
 	resp, err := provider.httpClient.Do(req)
 	if err != nil {

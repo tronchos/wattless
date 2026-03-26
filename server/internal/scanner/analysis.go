@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/tronchos/wattless/server/internal/insights"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -492,7 +493,7 @@ func buildAnalysis(resources []enrichedResource, perf PerformanceMetrics, groups
 	}
 
 	findings := make([]AnalysisFinding, 0, 6)
-	if finding := buildLCPFinding(lcpResource, perf); finding != nil {
+	if finding := buildLCPFinding(resources, lcpResource, perf); finding != nil {
 		findings = append(findings, *finding)
 	}
 	if finding := buildMainThreadFinding(resources, perf); finding != nil {
@@ -512,16 +513,16 @@ func buildAnalysis(resources []enrichedResource, perf PerformanceMetrics, groups
 	}
 
 	sort.Slice(findings, func(i, j int) bool {
-		if findingSeverityRank(findings[i].Severity) == findingSeverityRank(findings[j].Severity) {
-			if findingConfidenceRank(findings[i].Confidence) == findingConfidenceRank(findings[j].Confidence) {
+		if insights.SeverityRank(findings[i].Severity) == insights.SeverityRank(findings[j].Severity) {
+			if insights.ConfidenceRank(findings[i].Confidence) == insights.ConfidenceRank(findings[j].Confidence) {
 				if findings[i].EstimatedSavingsBytes == findings[j].EstimatedSavingsBytes {
 					return findings[i].ID < findings[j].ID
 				}
 				return findings[i].EstimatedSavingsBytes > findings[j].EstimatedSavingsBytes
 			}
-			return findingConfidenceRank(findings[i].Confidence) > findingConfidenceRank(findings[j].Confidence)
+			return insights.ConfidenceRank(findings[i].Confidence) > insights.ConfidenceRank(findings[j].Confidence)
 		}
-		return findingSeverityRank(findings[i].Severity) > findingSeverityRank(findings[j].Severity)
+		return insights.SeverityRank(findings[i].Severity) > insights.SeverityRank(findings[j].Severity)
 	})
 
 	return Analysis{
@@ -531,53 +532,95 @@ func buildAnalysis(resources []enrichedResource, perf PerformanceMetrics, groups
 	}
 }
 
-func buildLCPFinding(resource *enrichedResource, perf PerformanceMetrics) *AnalysisFinding {
-	if resource == nil || resource.Bytes < 150_000 {
+func buildLCPFinding(resources []enrichedResource, resource *enrichedResource, perf PerformanceMetrics) *AnalysisFinding {
+	if resource != nil && resource.Bytes >= 150_000 {
+		severity := "medium"
+		if perf.LCPMS >= 2_000 {
+			severity = "high"
+		}
+
+		evidence := []string{
+			fmt.Sprintf("El recurso que coincide con el LCP pesa %s.", humanBytes(resource.Bytes)),
+			fmt.Sprintf("LCP observado: %d ms.", perf.LCPMS),
+		}
+		if resource.PositionBand != "" && resource.PositionBand != positionUnknown {
+			evidence = append(evidence, fmt.Sprintf("Su posición es %s.", strings.ReplaceAll(resource.PositionBand, "_", " ")))
+		}
+		if perf.LCPResourceTag != "" {
+			evidence = append(evidence, fmt.Sprintf("El nodo LCP es <%s>.", perf.LCPResourceTag))
+		}
+
+		return &AnalysisFinding{
+			ID:                    "render_lcp_candidate",
+			Category:              "render",
+			Severity:              severity,
+			Confidence:            "high",
+			Title:                 "Ataca el recurso que domina el LCP",
+			Summary:               fmt.Sprintf("La carga crítica está anclada a un recurso de %s. Es el mejor punto de ataque para recortar el render inicial sin tocar el resto del documento.", humanBytes(resource.Bytes)),
+			Evidence:              evidence,
+			EstimatedSavingsBytes: estimateSavingsBytes(resource.Type, resource.Bytes),
+			RelatedResourceIDs:    []string{resource.ID},
+		}
+	}
+
+	if perf.LCPResourceTag == "" && perf.LCPSelectorHint == "" {
 		return nil
 	}
 
+	related := collectTextLCPResourceCandidates(resources, 3)
 	severity := "medium"
 	if perf.LCPMS >= 2_000 {
 		severity = "high"
 	}
 
+	nodeLabel := "nodo del DOM"
+	if perf.LCPResourceTag != "" {
+		nodeLabel = fmt.Sprintf("nodo <%s>", perf.LCPResourceTag)
+	}
+
 	evidence := []string{
-		fmt.Sprintf("El recurso que coincide con el LCP pesa %s.", humanBytes(resource.Bytes)),
+		fmt.Sprintf("El LCP observado corresponde a un %s sin asset de red asociado.", nodeLabel),
 		fmt.Sprintf("LCP observado: %d ms.", perf.LCPMS),
 	}
-	if resource.PositionBand != "" && resource.PositionBand != positionUnknown {
-		evidence = append(evidence, fmt.Sprintf("Su posición es %s.", strings.ReplaceAll(resource.PositionBand, "_", " ")))
+	if perf.LCPSelectorHint != "" {
+		evidence = append(evidence, fmt.Sprintf("Selector observado: %s.", perf.LCPSelectorHint))
 	}
-	if perf.LCPResourceTag != "" {
-		evidence = append(evidence, fmt.Sprintf("El nodo LCP es <%s>.", perf.LCPResourceTag))
+	if perf.LCPSize > 0 {
+		evidence = append(evidence, fmt.Sprintf("Tamaño reportado por LCP: %d px.", perf.LCPSize))
+	}
+	if len(related) > 0 {
+		evidence = append(evidence, "Las palancas probables están en tipografía, CSS crítico y trabajo de CPU del arranque.")
 	}
 
 	return &AnalysisFinding{
-		ID:                    "render_lcp_candidate",
+		ID:                    "render_lcp_dom_node",
 		Category:              "render",
 		Severity:              severity,
-		Confidence:            "high",
-		Title:                 "Ataca el recurso que domina el LCP",
-		Summary:               fmt.Sprintf("La carga crítica está anclada a un recurso de %s. Es el mejor punto de ataque para recortar el render inicial sin tocar el resto del documento.", humanBytes(resource.Bytes)),
+		Confidence:            "medium",
+		Title:                 "Revisa CSS, tipografía y CPU del nodo que domina el LCP",
+		Summary:               fmt.Sprintf("El LCP real no apunta a una imagen descargada, sino a un %s. Antes de culpar media pesada, conviene revisar fuentes, CSS crítico y presión de CPU en el primer render.", nodeLabel),
 		Evidence:              evidence,
-		EstimatedSavingsBytes: estimateSavingsBytes(resource.Type, resource.Bytes),
-		RelatedResourceIDs:    []string{resource.ID},
+		EstimatedSavingsBytes: sumEstimatedSavings(related),
+		RelatedResourceIDs:    collectTopResourceIDs(related, 3),
 	}
 }
 
 func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedResource) *AnalysisFinding {
-	var candidate *ResourceGroup
-	for index := range groups {
-		group := &groups[index]
-		if group.Kind != groupKindRepeatedGallery || group.TotalBytes < 400_000 {
-			continue
-		}
-		if candidate == nil || group.TotalBytes > candidate.TotalBytes {
-			candidate = group
-		}
-	}
+	candidate := dominantRepeatedGalleryGroup(groups)
 	if candidate == nil {
 		return nil
+	}
+
+	title := "Comprime la galería repetida del catálogo"
+	summary := fmt.Sprintf("%s suma %s. No todo este bloque es crítico para el viewport inicial, pero sí infla el coste por visita y multiplica el peso del catálogo visual.", candidate.Label, humanBytes(candidate.TotalBytes))
+
+	switch candidate.PositionBand {
+	case positionBelowFold:
+		title = "Comprime la galería que vive bajo el fold"
+		summary = fmt.Sprintf("%s suma %s. No frena el primer render, pero sí infla el coste por visita y multiplica el peso del catálogo visual.", candidate.Label, humanBytes(candidate.TotalBytes))
+	case positionNearFold:
+		title = "Comprime la galería repetida cerca del fold"
+		summary = fmt.Sprintf("%s suma %s. Parte de ese catálogo entra pronto en pantalla, pero su volumen sigue inflando el coste por visita más allá del primer viewport.", candidate.Label, humanBytes(candidate.TotalBytes))
 	}
 
 	return &AnalysisFinding{
@@ -585,8 +628,8 @@ func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedRes
 		Category:   "media",
 		Severity:   "medium",
 		Confidence: "high",
-		Title:      "Comprime la galería que vive bajo el fold",
-		Summary:    fmt.Sprintf("%s suma %s. No frena el primer render, pero sí infla el coste por visita y multiplica el peso del catálogo visual.", candidate.Label, humanBytes(candidate.TotalBytes)),
+		Title:      title,
+		Summary:    summary,
 		Evidence: []string{
 			fmt.Sprintf("Grupo detectado: %s.", candidate.Label),
 			fmt.Sprintf("Transferencia agregada: %s en %d recursos.", humanBytes(candidate.TotalBytes), candidate.ResourceCount),
@@ -619,6 +662,56 @@ func buildThirdPartyFinding(resources []enrichedResource, summary AnalysisSummar
 		},
 		EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, related),
 		RelatedResourceIDs:    related,
+	}
+}
+
+func dominantRepeatedGalleryGroup(groups []ResourceGroup) *ResourceGroup {
+	var candidate *ResourceGroup
+	for index := range groups {
+		group := &groups[index]
+		if group.Kind != groupKindRepeatedGallery || group.TotalBytes < 400_000 {
+			continue
+		}
+		if candidate == nil || group.TotalBytes > candidate.TotalBytes {
+			candidate = group
+		}
+	}
+	return candidate
+}
+
+func collectTextLCPResourceCandidates(resources []enrichedResource, limit int) []enrichedResource {
+	candidates := filterResources(resources, func(resource enrichedResource) bool {
+		return resource.Type == "font" || resource.Type == "stylesheet" || resource.Type == "script"
+	})
+
+	sort.Slice(candidates, func(i, j int) bool {
+		leftPriority := textLCPResourcePriority(candidates[i])
+		rightPriority := textLCPResourcePriority(candidates[j])
+		if leftPriority == rightPriority {
+			if candidates[i].Bytes == candidates[j].Bytes {
+				return candidates[i].ID < candidates[j].ID
+			}
+			return candidates[i].Bytes > candidates[j].Bytes
+		}
+		return leftPriority > rightPriority
+	})
+
+	if limit > 0 && len(candidates) > limit {
+		candidates = candidates[:limit]
+	}
+	return candidates
+}
+
+func textLCPResourcePriority(resource enrichedResource) int {
+	switch resource.Type {
+	case "font":
+		return 3
+	case "stylesheet":
+		return 2
+	case "script":
+		return 1
+	default:
+		return 0
 	}
 }
 
@@ -964,28 +1057,6 @@ func filterResources(resources []enrichedResource, predicate func(enrichedResour
 		}
 	}
 	return filtered
-}
-
-func findingSeverityRank(value string) int {
-	switch value {
-	case "high":
-		return 3
-	case "medium":
-		return 2
-	default:
-		return 1
-	}
-}
-
-func findingConfidenceRank(value string) int {
-	switch value {
-	case "high":
-		return 3
-	case "medium":
-		return 2
-	default:
-		return 1
-	}
 }
 
 func humanBytes(bytes int64) string {
