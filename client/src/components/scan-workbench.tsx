@@ -56,6 +56,7 @@ export function ScanWorkbench() {
     previousReport,
     selectedElementID,
     setSelectedElementID,
+    selectionSignal,
     selectedElement,
     scanError,
     isScanning,
@@ -219,6 +220,7 @@ export function ScanWorkbench() {
                         screenshot={report.screenshot}
                         elements={report.vampire_elements}
                         selectedElement={selectedElement}
+                        selectionSignal={selectionSignal}
                         onSelect={setSelectedElementID}
                       />
                     </div>

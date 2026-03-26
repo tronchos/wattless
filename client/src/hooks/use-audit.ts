@@ -34,6 +34,7 @@ export function useAudit() {
   const [report, setReport] = useState<ScanReport | null>(null);
   const [previousReport, setPreviousReport] = useState<ScanReport | null>(null);
   const [selectedElementID, setSelectedElementID] = useState<string | null>(null);
+  const [selectionSignal, setSelectionSignal] = useState(0);
   const [scanError, setScanError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgressIndex, setScanProgressIndex] = useState(0);
@@ -55,6 +56,11 @@ export function useAudit() {
 
     return () => window.clearInterval(intervalID);
   }, [isScanning]);
+
+  const selectElement = useCallback((id: string | null) => {
+    setSelectionSignal((current) => current + 1);
+    setSelectedElementID(id);
+  }, []);
 
   const handleSubmit = useCallback(
     async (event?: React.FormEvent<HTMLFormElement>) => {
@@ -88,6 +94,7 @@ export function useAudit() {
             currentReport?.url === nextReport.url ? currentReport : null
           );
           setReport(nextReport);
+          setSelectionSignal((current) => current + 1);
           setSelectedElementID(resolvePreferredElement(nextReport)?.id ?? null);
         });
       } catch (submitError) {
@@ -108,7 +115,8 @@ export function useAudit() {
     report,
     previousReport,
     selectedElementID,
-    setSelectedElementID,
+    setSelectedElementID: selectElement,
+    selectionSignal,
     selectedElement,
     scanError,
     isScanning,

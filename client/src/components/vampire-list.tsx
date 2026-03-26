@@ -138,6 +138,8 @@ const VampireRow = memo(function VampireRow({
           element={element}
           coverageLabel={coverage.label}
           coverageClassName={coverage.className}
+          canCenterInInspector={coverage.label === "Visible in inspector"}
+          onCenterInInspector={() => onSelect(element.id)}
         />
       ) : null}
     </article>

@@ -71,7 +71,11 @@ func sanitizeAssetInsightDrafts(
 		draft.Confidence = normalizeConfidence(draft.Confidence)
 		draft.LikelyLCPImpact = normalizeImpact(draft.LikelyLCPImpact)
 		draft.Scope = normalizeScope(draft.Scope)
-		draft.Source = normalizeSource(draft.Source)
+		if strings.TrimSpace(draft.Source) == "" {
+			draft.Source = "gemini"
+		} else {
+			draft.Source = normalizeSource(draft.Source)
+		}
 		draft.Evidence = trimNonEmptyEvidence(draft.Evidence, 3)
 
 		if draft.RelatedFindingID != "" {
@@ -123,7 +127,7 @@ func buildAssetInsight(
 	if usedFallback {
 		insight.Source = "hybrid"
 	} else {
-		insight.Source = "gemini"
+		insight.Source = normalizeSource(draft.Source)
 	}
 	return insight
 }
@@ -173,8 +177,11 @@ func pickAssetField(primary, fallback string, usedFallback *bool) string {
 	if primary != "" {
 		return primary
 	}
-	*usedFallback = true
-	return strings.TrimSpace(fallback)
+	fallback = strings.TrimSpace(fallback)
+	if fallback != "" {
+		*usedFallback = true
+	}
+	return fallback
 }
 
 func pickAssetEvidence(primary, fallback []string, usedFallback *bool) []string {

@@ -117,9 +117,6 @@ func BuildRuleBasedAssetInsight(
 	if finding != nil && len(finding.RelatedResourceIDs) > 1 {
 		scope = "group"
 	}
-	if finding == nil && action == nil {
-		scope = "global"
-	}
 
 	draft := AssetInsightDraft{
 		ResourceID:        asset.ID,

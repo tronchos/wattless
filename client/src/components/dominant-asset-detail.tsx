@@ -12,12 +12,16 @@ interface DominantAssetDetailProps {
   element: VampireElement;
   coverageLabel: string;
   coverageClassName: string;
+  canCenterInInspector: boolean;
+  onCenterInInspector: () => void;
 }
 
 export function DominantAssetDetail({
   element,
   coverageLabel,
   coverageClassName,
+  canCenterInInspector,
+  onCenterInInspector,
 }: DominantAssetDetailProps) {
   const insight = element.asset_insight;
 
@@ -74,6 +78,15 @@ export function DominantAssetDetail({
           body={insight.recommended_action}
           accent="text-primary"
         />
+        {canCenterInInspector ? (
+          <button
+            type="button"
+            onClick={onCenterInInspector}
+            className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1.5 text-xs font-label font-bold uppercase tracking-widest text-primary transition-colors hover:bg-primary/15"
+          >
+            Centrar en inspector
+          </button>
+        ) : null}
       </div>
 
       {insight.evidence.length > 0 ? (

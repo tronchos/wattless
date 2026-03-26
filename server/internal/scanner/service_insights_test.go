@@ -115,8 +115,8 @@ func TestAttachAssetInsightsIgnoresInvalidDraftsAndFallsBackPerAsset(t *testing.
 			RecommendedAction: "Retrásala hasta interacción.",
 			Confidence:        "high",
 			LikelyLCPImpact:   "low",
+			Evidence:          []string{"Carga 95 KB de analítica."},
 			Scope:             "asset",
-			Source:            "gemini",
 		},
 	}
 
@@ -130,8 +130,8 @@ func TestAttachAssetInsightsIgnoresInvalidDraftsAndFallsBackPerAsset(t *testing.
 	if enriched[0].AssetInsight.RecommendedFix == nil {
 		t.Fatal("expected fallback fix to be preserved")
 	}
-	if enriched[1].AssetInsight.Source != "hybrid" {
-		t.Fatalf("expected hybrid source for partially merged draft, got %q", enriched[1].AssetInsight.Source)
+	if enriched[1].AssetInsight.Source != "gemini" {
+		t.Fatalf("expected gemini source for valid provider draft, got %q", enriched[1].AssetInsight.Source)
 	}
 	if enriched[1].AssetInsight.Title != "Analítica con ruido evitable" {
 		t.Fatalf("expected gemini title, got %q", enriched[1].AssetInsight.Title)

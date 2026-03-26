@@ -88,3 +88,21 @@ func TestBuildRuleBasedAssetInsightAvoidsBelowFoldClaimForMixedGalleryAsset(t *t
 		t.Fatalf("expected group scope, got %q", draft.Scope)
 	}
 }
+
+func TestBuildRuleBasedAssetInsightDefaultsToAssetScopeWithoutFinding(t *testing.T) {
+	draft := BuildRuleBasedAssetInsight(
+		ResourceContext{
+			ID:           "lonely-script",
+			Type:         "script",
+			Bytes:        45_000,
+			PositionBand: "unknown",
+			VisualRole:   "unknown",
+		},
+		nil,
+		nil,
+	)
+
+	if draft.Scope != "asset" {
+		t.Fatalf("expected asset scope, got %q", draft.Scope)
+	}
+}

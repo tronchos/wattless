@@ -11,6 +11,7 @@ interface ScreenshotInspectorProps {
   screenshot: ScreenshotPayload;
   elements: VampireElement[];
   selectedElement: VampireElement | null;
+  selectionSignal: number;
   onSelect: (id: string) => void;
 }
 
@@ -18,6 +19,7 @@ export function ScreenshotInspector({
   screenshot,
   elements,
   selectedElement,
+  selectionSignal,
   onSelect,
 }: ScreenshotInspectorProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -56,7 +58,7 @@ export function ScreenshotInspector({
       top: Math.max(0, targetTop),
       behavior: "smooth",
     });
-  }, [selectedElement, screenshot]);
+  }, [selectedElement, screenshot, selectionSignal]);
 
   return (
     <div className="space-y-6">
