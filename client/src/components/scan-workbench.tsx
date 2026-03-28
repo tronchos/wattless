@@ -288,65 +288,128 @@ export function ScanWorkbench() {
                       className="overflow-hidden"
                     >
                       <div className="p-8 pt-4 border-t border-outline-variant/10">
-                        <div className="flex flex-col gap-12">
-                          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
-                            <div className="max-w-xl">
-                              <p className="text-on-surface-variant text-xs uppercase tracking-widest font-label mb-2">
-                                Métricas crudas
-                              </p>
-                              <h4 className="text-2xl font-bold font-headline text-on-surface">
-                                Tiempos base y Anclajes
-                              </h4>
+                        <div className="flex flex-col gap-8 lg:gap-10">
+                          {/* ROW 1: Network & Payload vs CPU Lab */}
+                          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
+                            
+                            {/* COL 1: Network & Payload */}
+                            <div className="bg-surface-container-high rounded-3xl p-6 border border-outline-variant/10 flex flex-col h-full">
+                              <div className="text-primary text-[10px] uppercase tracking-widest font-label font-bold mb-4">
+                                Network & Payload
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 h-full">
+                                <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
+                                  <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                                    Transferencia Observada
+                                  </div>
+                                  <div className="mt-1 text-2xl font-headline font-bold text-on-surface">
+                                    {formatBytes(report.total_bytes_transferred)}
+                                  </div>
+                                  <div className="text-xs opacity-70 mt-1.5 flex gap-2 font-medium">
+                                     <span className="text-success">{report.summary.successful_requests} OK</span>
+                                     {report.summary.failed_requests > 0 && <span className="text-error">{report.summary.failed_requests} FO</span>}
+                                  </div>
+                                </div>
+
+                                <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
+                                  <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                                    Ahorro Potencial
+                                  </div>
+                                  <div className="mt-1 text-2xl font-headline font-bold text-on-surface text-primary">
+                                    {formatBytes(report.summary.potential_savings_bytes)}
+                                  </div>
+                                  <div className="text-xs opacity-70 mt-1.5">
+                                     {(report.summary.potential_savings_bytes / Math.max(report.total_bytes_transferred, 1) * 100).toFixed(1)}% del total
+                                  </div>
+                                </div>
+
+                                <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
+                                  <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                                    Tiempos Base
+                                  </div>
+                                  <div className="mt-1 text-xl font-headline font-bold text-on-surface flex items-baseline gap-1">
+                                    {formatMilliseconds(report.performance.dom_content_loaded_ms)} <span className="text-[10px] font-normal text-on-surface-variant uppercase">DCL</span>
+                                  </div>
+                                  <div className="text-xs opacity-70 mt-1.5">
+                                    Load: {formatMilliseconds(report.performance.load_ms)}
+                                  </div>
+                                </div>
+
+                                <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5 relative overflow-hidden">
+                                  <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                                    Infraestructura
+                                  </div>
+                                  <div className="mt-1.5 text-sm font-headline font-bold text-on-surface truncate">
+                                    {formatHostingLabel(report)}
+                                  </div>
+                                  <div className="text-[11px] opacity-70 truncate mt-1">
+                                    {report.hosted_by || "Proveedor no detectado"}
+                                  </div>
+                                  {report.hosting_is_green && (
+                                    <Leaf className="w-12 h-12 text-success/[0.08] absolute -bottom-3 -right-3 rotate-12" />
+                                  )}
+                                </div>
+                              </div>
                             </div>
 
-                            <div className="grid gap-4 sm:grid-cols-2 lg:w-[32rem]">
-                              <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
-                                <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
-                                  Transferencia
-                                </div>
-                                <div className="mt-1 text-lg font-headline font-bold text-on-surface">
-                                  {formatBytes(report.total_bytes_transferred)}
-                                </div>
-                                <div className="text-xs opacity-70">
-                                  {report.summary.total_requests.toLocaleString("es-CO")} peticiones
-                                </div>
+                            {/* COL 2: Performance Lab & CPU */}
+                            <div className="bg-surface-container-high rounded-3xl p-6 border border-outline-variant/10 flex flex-col h-full">
+                              <div className="text-primary text-[10px] uppercase tracking-widest font-label font-bold mb-4">
+                                Performance Lab & CPU
                               </div>
-                              <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
-                                <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
-                                  Tiempos
+                              <div className="grid grid-cols-2 gap-3 h-full">
+                                <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
+                                  <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                                    Métricas Críticas
+                                  </div>
+                                  <div className="mt-1 flex items-baseline gap-2">
+                                    <span className="text-2xl font-headline font-bold text-on-surface">
+                                      {formatMilliseconds(report.performance.lcp_ms)}
+                                    </span>
+                                    <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wide">LCP</span>
+                                  </div>
+                                  <div className="text-xs opacity-70 mt-1.5">
+                                    FCP: {formatMilliseconds(report.performance.fcp_ms)}
+                                  </div>
                                 </div>
-                                <div className="mt-1 text-lg font-headline font-bold text-on-surface">
-                                  {formatMilliseconds(report.performance.dom_content_loaded_ms)} DCL
+
+                                <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
+                                  <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
+                                    Bloqueo de CPU
+                                  </div>
+                                  <div className="mt-1 flex items-baseline gap-2">
+                                    <span className="text-2xl font-headline font-bold text-on-surface text-error">
+                                      {formatMilliseconds(report.performance.long_tasks_total_ms)}
+                                    </span>
+                                    <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wide">Long</span>
+                                  </div>
+                                  <div className="text-xs opacity-70 mt-1.5 truncate" title={`JS: ${formatMilliseconds(report.performance.script_resource_duration_ms)}`}>
+                                    {report.performance.long_tasks_count} tareas · JS: {formatMilliseconds(report.performance.script_resource_duration_ms)}
+                                  </div>
                                 </div>
-                                <div className="text-xs opacity-70">
-                                  Load {formatMilliseconds(report.performance.load_ms)}
-                                </div>
-                              </div>
-                              <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
-                                <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
-                                  Anclajes Visibles
-                                </div>
-                                <div className="mt-1 text-lg font-headline font-bold text-on-surface">
-                                  {report.summary.visual_mapped_vampires} / {report.vampire_elements.length}
-                                </div>
-                              </div>
-                              <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
-                                <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">
-                                  Hosting
-                                </div>
-                                <div className="mt-1 text-sm font-headline font-bold text-on-surface truncate">
-                                  {formatHostingLabel(report)}
-                                </div>
-                                <div className="text-xs opacity-70 truncate px-1">
-                                  {report.hosted_by || "No documentado"}
+
+                                <div className="col-span-2 bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
+                                  <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-2 flex justify-between">
+                                    <span>Identidad del LCP (Largest Contentful Paint)</span>
+                                    <span>{report.performance.lcp_size ? formatBytes(report.performance.lcp_size) : ""}</span>
+                                  </div>
+                                  <div className="text-sm font-medium text-on-surface break-words font-mono bg-surface-container-highest p-2.5 rounded-xl text-xs border border-outline-variant/10">
+                                    {report.performance.lcp_selector_hint || (report.performance.lcp_resource_tag ? `<${report.performance.lcp_resource_tag}> (Sin selector estricto)` : "Selector no identificado por agente")}
+                                  </div>
+                                  {report.performance.lcp_resource_url && (
+                                    <div className="text-[11px] opacity-70 mt-2 truncate w-full">
+                                      URL: {report.performance.lcp_resource_url}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
                           </div>
 
+                          {/* ROW 2: Warnings (if any) */}
                           {report.warnings.length > 0 && (
-                            <div className="rounded-2xl bg-error-container/10 p-5 border border-error-container/20">
-                              <div className="text-error font-bold text-sm uppercase tracking-wider font-label">
+                            <div className="rounded-3xl bg-error-container/10 p-6 border border-error-container/20">
+                              <div className="text-error font-bold text-[10px] uppercase tracking-widest font-label">
                                 Advertencias Críticas
                               </div>
                               <ul className="mt-3 space-y-2 text-sm leading-6 text-on-surface-variant">
@@ -357,20 +420,63 @@ export function ScanWorkbench() {
                             </div>
                           )}
 
-                          <div className="bento-grid xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
-                            <MethodologyCard report={report} />
-                            <div className="bento-grid lg:grid-cols-2">
-                              <BreakdownBars
-                                title="Breakdown by type"
-                                subtitle="Peso por recurso"
-                                items={report.breakdown_by_type}
-                              />
-                              <BreakdownBars
-                                title="Breakdown by party"
-                                subtitle="1ra vs 3ra parte"
-                                items={report.breakdown_by_party}
-                              />
+                          {/* ROW 3: Breakdowns and Dimensions */}
+                          <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-4 lg:gap-6">
+                            <div className="bg-surface-container-high rounded-3xl p-6 border border-outline-variant/10 flex flex-col h-full">
+                               <div className="text-primary text-[10px] uppercase tracking-widest font-label font-bold mb-4">
+                                Distribución Dimensional
+                              </div>
+                              
+                              <div className="grid grid-cols-2 gap-3 mb-6">
+                                <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
+                                   <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Viewport Fold</div>
+                                   <div className="mt-3 flex items-center gap-4">
+                                     <div className="h-16 w-3 bg-surface-container-highest rounded-full relative overflow-hidden flex flex-col justify-end border border-outline-variant/10">
+                                        <div 
+                                          className="w-full bg-primary" 
+                                          style={{height: `${(report.analysis.summary.below_fold_bytes / Math.max(report.analysis.summary.above_fold_bytes + report.analysis.summary.below_fold_bytes, 1)) * 100}%`}}
+                                        ></div>
+                                     </div>
+                                     <div className="flex flex-col gap-2">
+                                       <div className="leading-none">
+                                         <div className="text-[15px] font-bold font-headline text-on-surface">{formatBytes(report.analysis.summary.above_fold_bytes)}</div>
+                                         <div className="text-[10px] text-on-surface-variant uppercase mt-0.5">Above Fold</div>
+                                       </div>
+                                       <div className="leading-none">
+                                         <div className="text-[15px] font-bold font-headline text-primary">{formatBytes(report.analysis.summary.below_fold_bytes)}</div>
+                                         <div className="text-[10px] text-on-surface-variant uppercase mt-0.5">Below Fold (Oculto)</div>
+                                       </div>
+                                     </div>
+                                   </div>
+                                </div>
+
+                                <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5 flex flex-col justify-center">
+                                   <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Render Critical vs Total</div>
+                                   <div className="mt-2 text-2xl font-headline font-bold text-on-surface">
+                                      {formatBytes(report.analysis.summary.render_critical_bytes)}
+                                   </div>
+                                   <div className="text-[10px] text-on-surface-variant uppercase mt-1">Crítico Bloqueante</div>
+                                   <div className="w-full bg-surface-container-highest rounded-full h-1.5 mt-4 overflow-hidden border border-outline-variant/10">
+                                     <div className="bg-error h-1.5 rounded-full" style={{width: `${Math.min(100, (report.analysis.summary.render_critical_bytes / Math.max(report.total_bytes_transferred, 1)) * 100)}%`}}></div>
+                                   </div>
+                                </div>
+                              </div>
+
+                              <div className="bento-grid lg:grid-cols-2 mt-auto">
+                                <BreakdownBars
+                                  title="Breakdown by type"
+                                  subtitle="Peso por recurso"
+                                  items={report.breakdown_by_type}
+                                />
+                                <BreakdownBars
+                                  title="Breakdown by party"
+                                  subtitle="Propiedad"
+                                  items={report.breakdown_by_party}
+                                />
+                              </div>
                             </div>
+                            
+                            <MethodologyCard report={report} />
                           </div>
                         </div>
                       </div>
