@@ -98,9 +98,9 @@ func BuildRuleBasedAssetInsight(
 	title := assetTitle(asset, finding)
 	shortProblem := assetShortProblem(asset, finding)
 	whyItMatters := assetWhyItMatters(asset, finding)
-	recommendedAction := conciseReason(SuggestRuleBasedResource(asset))
+	recommendedAction := strings.TrimSpace(SuggestRuleBasedResource(asset))
 	if action != nil && strings.TrimSpace(action.Reason) != "" {
-		recommendedAction = conciseReason(action.Reason)
+		recommendedAction = strings.TrimSpace(action.Reason)
 	}
 
 	confidence := "low"
@@ -380,14 +380,6 @@ func trimEvidence(evidence []string, limit int) []string {
 		return append([]string(nil), evidence...)
 	}
 	return append([]string(nil), evidence[:limit]...)
-}
-
-func conciseReason(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return value
-	}
-	return value
 }
 
 func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext) *AnalysisFindingContext {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Download, FileText } from "lucide-react";
 
 import { createMarkdownReport } from "@/lib/report-markdown";
@@ -14,16 +14,30 @@ export function MarkdownReportCard({
   report,
 }: MarkdownReportCardProps) {
   const markdown = useMemo(() => createMarkdownReport(report), [report]);
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
 
   async function copyMarkdown() {
     try {
       await navigator.clipboard.writeText(markdown);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      showCopyFeedback("copied");
+      return;
     } catch {
-      // Clipboard API not available
+      if (copyWithLegacyFallback(markdown)) {
+        showCopyFeedback("copied");
+        return;
+      }
     }
+
+    showCopyFeedback("error");
   }
 
   function downloadMarkdown() {
@@ -59,8 +73,10 @@ export function MarkdownReportCard({
             aria-label="Copy report as markdown"
             className="bg-surface-container-highest text-on-surface px-8 py-3 rounded-xl font-bold hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm"
           >
-            {copied ? (
+            {copyStatus === "copied" ? (
               <><Check className="w-4 h-4" /> Copied!</>
+            ) : copyStatus === "error" ? (
+              <><Copy className="w-4 h-4" /> Copy failed</>
             ) : (
               <><Copy className="w-4 h-4" /> Copy Markdown</>
             )}
@@ -76,4 +92,32 @@ export function MarkdownReportCard({
       </div>
     </section>
   );
+
+  function showCopyFeedback(status: "copied" | "error") {
+    setCopyStatus(status);
+    if (resetTimerRef.current !== null) {
+      window.clearTimeout(resetTimerRef.current);
+    }
+    resetTimerRef.current = window.setTimeout(() => {
+      setCopyStatus("idle");
+      resetTimerRef.current = null;
+    }, 2000);
+  }
+}
+
+function copyWithLegacyFallback(text: string): boolean {
+  const textarea = document.createElement("textarea");
+  try {
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    textarea.remove();
+  }
 }

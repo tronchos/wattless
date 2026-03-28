@@ -68,6 +68,17 @@ func TestClassifyPositionBand(t *testing.T) {
 	}
 }
 
+func TestSummarizePositionBandUsesDeterministicPriority(t *testing.T) {
+	got := summarizePositionBand([]enrichedResource{
+		{PositionBand: positionNearFold},
+		{PositionBand: positionBelowFold},
+	})
+
+	if got != positionNearFold {
+		t.Fatalf("expected near fold to win tie by priority, got %s", got)
+	}
+}
+
 func TestClassifyThirdPartyKindDetectsAnalytics(t *testing.T) {
 	resource := enrichedResource{
 		URL:      "https://us.i.posthog.com/static/array.js",

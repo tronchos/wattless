@@ -430,7 +430,13 @@ func summarizePositionBand(resources []enrichedResource) string {
 	}
 	maxBand := positionUnknown
 	maxCount := 0
-	for band, count := range counts {
+	for _, band := range []string{
+		positionAboveFold,
+		positionNearFold,
+		positionBelowFold,
+		positionUnknown,
+	} {
+		count := counts[band]
 		if count > maxCount {
 			maxBand = band
 			maxCount = count

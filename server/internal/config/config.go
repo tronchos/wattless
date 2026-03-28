@@ -3,7 +3,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -55,7 +57,7 @@ func Load() Config {
 		BrowserBin:                  os.Getenv("BROWSER_BIN"),
 		GreencheckBaseURL:           envOrDefault("GREENCHECK_BASE_URL", "https://api.thegreenwebfoundation.org/api/v3/greencheck"),
 		AIProvider:                  envOrDefault("AI_PROVIDER", "rule_based"),
-		GeminiAPIKey:                os.Getenv("GEMINI_API_KEY"),
+		GeminiAPIKey:                envOrFile("GEMINI_API_KEY"),
 		GeminiModel:                 envOrDefault("GEMINI_MODEL", "gemini-2.0-flash"),
 		LLMTimeout:                  durationOrDefault("LLM_TIMEOUT", 12*time.Second),
 	}
@@ -68,7 +70,7 @@ func (cfg Config) Validate() error {
 		return fmt.Errorf("unknown AI_PROVIDER %q: must be rule_based or gemini", cfg.AIProvider)
 	}
 	if cfg.AIProvider == "gemini" && cfg.GeminiAPIKey == "" {
-		return fmt.Errorf("GEMINI_API_KEY is required when AI_PROVIDER is gemini")
+		return fmt.Errorf("GEMINI_API_KEY or GEMINI_API_KEY_FILE is required when AI_PROVIDER is gemini")
 	}
 	return nil
 }
@@ -78,6 +80,19 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func envOrFile(key string) string {
+	fileKey := key + "_FILE"
+	if filePath := strings.TrimSpace(os.Getenv(fileKey)); filePath != "" {
+		rawValue, err := os.ReadFile(filepath.Clean(filePath))
+		if err == nil {
+			if value := strings.TrimSpace(string(rawValue)); value != "" {
+				return value
+			}
+		}
+	}
+	return strings.TrimSpace(os.Getenv(key))
 }
 
 func intOrDefault(key string, fallback int) int {

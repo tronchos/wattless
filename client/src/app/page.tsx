@@ -2,6 +2,8 @@ import { ScanWorkbench } from "@/components/scan-workbench";
 import { Leaf } from "lucide-react";
 
 export default function HomePage() {
+  const footerLinks = ["Documentation", "Privacy Policy", "Carbon Calculator"];
+
   return (
     <div className="bg-surface text-on-surface min-h-screen selection:bg-primary selection:text-on-primary flex flex-col">
       {/* Minimalist Non-Sticky Branding */}
@@ -34,9 +36,15 @@ export default function HomePage() {
             </div>
           </div>
           <div className="flex flex-wrap justify-center gap-8">
-            <a className="text-on-surface-variant hover:text-primary transition-colors text-xs uppercase tracking-widest font-label" href="#">Documentation</a>
-            <a className="text-on-surface-variant hover:text-primary transition-colors text-xs uppercase tracking-widest font-label" href="#">Privacy Policy</a>
-            <a className="text-on-surface-variant hover:text-primary transition-colors text-xs uppercase tracking-widest font-label" href="#">Carbon Calculator</a>
+            {footerLinks.map((label) => (
+              <span
+                key={label}
+                title="Próximamente"
+                className="text-on-surface-variant text-xs uppercase tracking-widest font-label cursor-default"
+              >
+                {label}
+              </span>
+            ))}
           </div>
           <div className="flex items-center gap-4 text-on-surface-variant/40 hover:text-primary transition-colors cursor-pointer">
             <Leaf className="w-5 h-5" />

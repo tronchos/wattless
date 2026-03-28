@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   formatResourceLabel,
@@ -23,6 +23,7 @@ export function ScreenshotInspector({
   onSelect,
 }: ScreenshotInspectorProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [tileSources, setTileSources] = useState<TileSource[]>([]);
   const elementsWithAnchors = useMemo(
     () => elements.filter((element) => element.bounding_box),
     [elements],
@@ -34,6 +35,31 @@ export function ScreenshotInspector({
     [elementsWithAnchors, screenshot],
   );
   const isTruncated = screenshot.captured_height < screenshot.document_height;
+
+  useEffect(() => {
+    let isActive = true;
+    const nextTileSources = screenshot.tiles.map((tile) => ({
+      id: tile.id,
+      y: tile.y,
+      height: tile.height,
+      objectURL: URL.createObjectURL(
+        base64ToBlob(tile.data_base64, screenshot.mime_type),
+      ),
+    }));
+
+    queueMicrotask(() => {
+      if (isActive) {
+        setTileSources(nextTileSources);
+      }
+    });
+
+    return () => {
+      isActive = false;
+      nextTileSources.forEach((tile) => {
+        URL.revokeObjectURL(tile.objectURL);
+      });
+    };
+  }, [screenshot.mime_type, screenshot.tiles]);
 
   useEffect(() => {
     if (!selectedElement?.bounding_box || !scrollRef.current) {
@@ -106,12 +132,12 @@ export function ScreenshotInspector({
               aspectRatio: `${screenshot.document_width} / ${screenshot.captured_height}`,
             }}
           >
-            {screenshot.tiles.map((tile) => (
+            {tileSources.map((tile) => (
               <img
                 key={tile.id}
                 alt={`Document tile ${tile.id}`}
                 className="absolute left-0 w-full object-cover"
-                src={`data:${screenshot.mime_type};base64,${tile.data_base64}`}
+                src={tile.objectURL}
                 style={{
                   top: `${(tile.y / screenshot.captured_height) * 100}%`,
                   height: `${(tile.height / screenshot.captured_height) * 100}%`,
@@ -187,4 +213,17 @@ function boxToStyle(box: BoundingBox, screenshot: ScreenshotPayload) {
     width: `${(box.width / screenshot.document_width) * 100}%`,
     height: `${(box.height / screenshot.captured_height) * 100}%`,
   };
+}
+
+function base64ToBlob(dataBase64: string, mimeType: string): Blob {
+  const binary = atob(dataBase64);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new Blob([bytes], { type: mimeType });
+}
+
+interface TileSource {
+  id: string;
+  y: number;
+  height: number;
+  objectURL: string;
 }

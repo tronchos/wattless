@@ -892,19 +892,6 @@ func collectElementBoxes(page *rod.Page) ([]domElement, error) {
 	return boxes, nil
 }
 
-func matchBoundingBox(resourceURL string, elements []domElement) *BoundingBox {
-	element := matchDOMElement(resourceURL, elements)
-	if element == nil {
-		return nil
-	}
-	return &BoundingBox{
-		X:      element.X,
-		Y:      element.Y,
-		Width:  element.Width,
-		Height: element.Height,
-	}
-}
-
 func matchDOMElement(resourceURL string, elements []domElement) *domElement {
 	for index := range elements {
 		if sameAsset(resourceURL, elements[index].URL) {

@@ -128,6 +128,7 @@ docker compose -f docker/compose.prod.yml up --build
 - `GREENCHECK_BASE_URL` default `https://api.thegreenwebfoundation.org/api/v3/greencheck`
 - `AI_PROVIDER` default `rule_based`
 - `GEMINI_API_KEY` opcional
+- `GEMINI_API_KEY_FILE` opcional, con prioridad sobre `GEMINI_API_KEY` cuando apunta a un archivo no vacío
 - `GEMINI_MODEL` default `gemini-2.0-flash`
 - `LLM_TIMEOUT` default `12s`
 

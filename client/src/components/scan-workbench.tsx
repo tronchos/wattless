@@ -350,8 +350,8 @@ export function ScanWorkbench() {
                                 Advertencias Críticas
                               </div>
                               <ul className="mt-3 space-y-2 text-sm leading-6 text-on-surface-variant">
-                                {report.warnings.map((warning) => (
-                                  <li key={warning}>- {warning}</li>
+                                {report.warnings.map((warning, index) => (
+                                  <li key={`warning-${index}`}>- {warning}</li>
                                 ))}
                               </ul>
                             </div>

@@ -64,8 +64,8 @@ export function FindingsPanel({ findings }: FindingsPanelProps) {
 
             {finding.evidence.length > 0 ? (
               <ul className="mt-5 space-y-2 text-sm leading-6 text-slate-300">
-                {finding.evidence.map((item) => (
-                  <li key={item} className="flex items-start gap-3">
+                {finding.evidence.map((item, index) => (
+                  <li key={`${finding.id}-${index}`} className="flex items-start gap-3">
                     <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[var(--accent)] shrink-0" />
                     <span>{item}</span>
                   </li>

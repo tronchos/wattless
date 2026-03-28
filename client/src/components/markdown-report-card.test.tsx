@@ -21,6 +21,9 @@ beforeEach(() => {
       writeText: vi.fn().mockResolvedValue(undefined),
     },
   });
+  Object.assign(document, {
+    execCommand: vi.fn(),
+  });
 });
 
 describe("MarkdownReportCard", () => {
@@ -43,5 +46,37 @@ describe("MarkdownReportCard", () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
       "# Mock Report\nTest content"
     );
+  });
+
+  it("falls back to execCommand when the Clipboard API fails", async () => {
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error("denied"));
+    const execCommandSpy = vi
+      .spyOn(document, "execCommand")
+      .mockReturnValue(true);
+
+    render(<MarkdownReportCard report={fakeReport} />);
+
+    const copyButton = screen.getByRole("button", { name: /copy report/i });
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Copied!")).toBeDefined();
+    });
+
+    expect(execCommandSpy).toHaveBeenCalledWith("copy");
+  });
+
+  it("shows a visible error when copy fails completely", async () => {
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error("denied"));
+    vi.spyOn(document, "execCommand").mockReturnValue(false);
+
+    render(<MarkdownReportCard report={fakeReport} />);
+
+    const copyButton = screen.getByRole("button", { name: /copy report/i });
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Copy failed")).toBeDefined();
+    });
   });
 });

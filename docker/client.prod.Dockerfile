@@ -22,9 +22,15 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+RUN groupadd --gid 1001 nextjs \
+  && useradd --uid 1001 --gid 1001 --create-home --home-dir /home/nextjs --shell /usr/sbin/nologin nextjs
+
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+RUN chown -R nextjs:nextjs /app
+
+USER nextjs
 
 EXPOSE 3000
 

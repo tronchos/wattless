@@ -1,6 +1,14 @@
 .git
 .DS_Store
+.env*
+.claude/
+docker/
+Makefile
+*.md
 client/.next
 client/node_modules
 server/.cache
 server/tmp
+**/*_test.go
+**/*.test.ts
+**/*.test.tsx
