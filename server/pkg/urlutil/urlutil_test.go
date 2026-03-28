@@ -45,22 +45,25 @@ func TestNormalizeRejectsInvalidURL(t *testing.T) {
 }
 
 func TestValidatePublicTargetRejectsLoopbackIP(t *testing.T) {
-	err := ValidatePublicTarget(context.Background(), "127.0.0.1")
+	_, err := ValidatePublicTarget(context.Background(), "127.0.0.1")
 	if !errors.Is(err, ErrBlockedTarget) {
 		t.Fatalf("expected ErrBlockedTarget, got %v", err)
 	}
 }
 
 func TestValidatePublicTargetRejectsLocalhost(t *testing.T) {
-	err := ValidatePublicTarget(context.Background(), "localhost")
+	_, err := ValidatePublicTarget(context.Background(), "localhost")
 	if !errors.Is(err, ErrBlockedTarget) {
 		t.Fatalf("expected ErrBlockedTarget, got %v", err)
 	}
 }
 
 func TestValidatePublicTargetAllowsPublicIP(t *testing.T) {
-	err := ValidatePublicTarget(context.Background(), "1.1.1.1")
+	addresses, err := ValidatePublicTarget(context.Background(), "1.1.1.1")
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(addresses) != 1 || addresses[0].String() != "1.1.1.1" {
+		t.Fatalf("unexpected addresses: %#v", addresses)
 	}
 }

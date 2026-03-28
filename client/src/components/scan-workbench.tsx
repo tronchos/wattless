@@ -27,7 +27,7 @@ import { ScreenshotInspector } from "@/components/screenshot-inspector";
 import { ScoreRing } from "@/components/score-ring";
 import { VampireList } from "@/components/vampire-list";
 import { formatBytes, formatGrams, formatMilliseconds } from "@/lib/api";
-import type { ScanReport } from "@/lib/types";
+import type { ScanJobStatus, ScanReport } from "@/lib/types";
 import { useAudit, sampleURL, scanProgressLabels } from "@/hooks/use-audit";
 
 const emptyStateHighlights = [
@@ -62,6 +62,12 @@ export function ScanWorkbench() {
     isScanning,
     scanProgressIndex,
     handleSubmit,
+    jobStatus,
+    queuePosition,
+    estimatedWaitSeconds,
+    submittedURL,
+    conflictingJob,
+    resumeConflictingJob,
   } = useAudit();
 
   const [isTechnicalDetailsOpen, setIsTechnicalDetailsOpen] = useState(false);
@@ -131,9 +137,12 @@ export function ScanWorkbench() {
             {!report && (
                <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs uppercase tracking-widest font-label">
                  <span className="bg-surface-container-highest text-on-surface px-3 py-1.5 rounded-full border border-outline-variant/20">
-                   {isScanning
-                     ? scanProgressLabels[scanProgressIndex]
-                     : "Listo para analizar"}
+                   {formatProgressBadgeLabel(
+                     isScanning,
+                     jobStatus,
+                     queuePosition,
+                     scanProgressIndex,
+                   )}
                  </span>
                  <button
                    type="button"
@@ -147,7 +156,16 @@ export function ScanWorkbench() {
             
             {scanError && (
                <div className="mx-auto mt-6 max-w-2xl rounded-xl bg-error-container/20 px-4 py-3 text-sm leading-6 text-error border border-error/20">
-                 {scanError}
+                 <p>{scanError}</p>
+                 {conflictingJob ? (
+                   <button
+                     type="button"
+                     onClick={resumeConflictingJob}
+                     className="mt-3 inline-flex items-center rounded-lg bg-error text-on-error px-3 py-2 text-xs font-bold uppercase tracking-wide transition-colors hover:opacity-90"
+                   >
+                     Reanudar turno actual
+                   </button>
+                 ) : null}
                </div>
             )}
           </div>
@@ -379,14 +397,16 @@ export function ScanWorkbench() {
                 {isScanning ? "Análisis en progreso" : "Auditoría en reposo"}
               </p>
               <h2 className="mt-5 text-2xl sm:text-3xl font-headline font-bold text-center sm:text-left text-on-surface">
-                {isScanning
-                  ? scanProgressLabels[scanProgressIndex]
-                  : "Ejecuta un análisis y el espacio de trabajo ensamblará el reporte."}
+                {getLoadingHeading(isScanning, jobStatus, queuePosition, scanProgressIndex)}
               </h2>
               <p className="mt-4 max-w-3xl text-sm leading-relaxed text-on-surface-variant text-center sm:text-left mx-auto sm:mx-0">
-                {isScanning
-                  ? "Wattless está emulando un perfil moderno para recolectar métricas de transferencia de red, CPU throttling e hitos de render visual para producir un dictamen preciso."
-                  : "El reporte completo fluye de manera progresiva: empieza por el score global, separa evidencia above/below the fold y termina priorizando hallazgos accionables."}
+                {getLoadingDescription(
+                  isScanning,
+                  jobStatus,
+                  queuePosition,
+                  estimatedWaitSeconds,
+                  submittedURL,
+                )}
               </p>
 
               <div className="mt-10 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -416,4 +436,100 @@ export function ScanWorkbench() {
 function formatHostingLabel(report: ScanReport): string {
   if (report.hosting_verdict === "unknown") return "Hosting desconocido";
   return report.hosting_is_green ? "Hosting verde" : "Hosting no verde";
+}
+
+function formatProgressBadgeLabel(
+  isScanning: boolean,
+  jobStatus: ScanJobStatus | null,
+  queuePosition: number | null,
+  scanProgressIndex: number,
+): string {
+  if (!isScanning) {
+    return "Listo para analizar";
+  }
+
+  if (jobStatus === "queued") {
+    return queuePosition && queuePosition > 0 ? `Turno #${queuePosition}` : "Turno en cola";
+  }
+
+  if (jobStatus === "scanning") {
+    return scanProgressLabels[scanProgressIndex];
+  }
+
+  return "Preparando turno";
+}
+
+function getLoadingHeading(
+  isScanning: boolean,
+  jobStatus: ScanJobStatus | null,
+  queuePosition: number | null,
+  scanProgressIndex: number,
+): string {
+  if (!isScanning) {
+    return "Ejecuta un análisis y el espacio de trabajo ensamblará el reporte.";
+  }
+
+  if (jobStatus === "queued") {
+    if (queuePosition === 1) {
+      return "Turno #1";
+    }
+
+    if (queuePosition && queuePosition > 1) {
+      return `Turno #${queuePosition}`;
+    }
+
+    return "Tu análisis está en cola";
+  }
+
+  if (jobStatus === "scanning") {
+    return scanProgressLabels[scanProgressIndex];
+  }
+
+  return "Preparando tu turno";
+}
+
+function getLoadingDescription(
+  isScanning: boolean,
+  jobStatus: ScanJobStatus | null,
+  queuePosition: number | null,
+  estimatedWaitSeconds: number | null,
+  submittedURL: string | null,
+): string {
+  if (!isScanning) {
+    return "El reporte completo fluye de manera progresiva: empieza por el score global, separa evidencia above/below the fold y termina priorizando hallazgos accionables.";
+  }
+
+  if (jobStatus === "queued") {
+    const waitLabel =
+      estimatedWaitSeconds && estimatedWaitSeconds > 0
+        ? ` Espera estimada: ${formatWaitTime(estimatedWaitSeconds)}.`
+        : "";
+    const subject = submittedURL ? `${submittedURL} quedó en cola.` : "Tu análisis quedó en cola.";
+
+    if (queuePosition === 1) {
+      return `${subject} Ya eres el siguiente en la fila.${waitLabel}`;
+    }
+
+    if (queuePosition && queuePosition > 1) {
+      return `${subject} Posición actual: ${queuePosition}.${waitLabel}`;
+    }
+
+    return `${subject}${waitLabel}`;
+  }
+
+  return "Wattless está emulando un perfil moderno para recolectar métricas de transferencia de red, CPU throttling e hitos de render visual para producir un dictamen preciso.";
+}
+
+function formatWaitTime(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (remainingSeconds === 0) {
+    return `${minutes} min`;
+  }
+
+  return `${minutes} min ${remainingSeconds}s`;
 }

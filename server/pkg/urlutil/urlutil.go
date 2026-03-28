@@ -46,38 +46,40 @@ func Normalize(raw string) (string, string, error) {
 	return parsed.String(), parsed.Hostname(), nil
 }
 
-func ValidatePublicTarget(ctx context.Context, hostname string) error {
+func ValidatePublicTarget(ctx context.Context, hostname string) ([]net.IP, error) {
 	value := strings.TrimSpace(strings.TrimSuffix(hostname, "."))
 	if value == "" {
-		return ErrInvalidURL
+		return nil, ErrInvalidURL
 	}
 
 	if isExplicitlyBlockedHostname(value) {
-		return ErrBlockedTarget
+		return nil, ErrBlockedTarget
 	}
 
 	if ip := net.ParseIP(value); ip != nil {
 		if isPrivateOrLocalIP(ip) {
-			return ErrBlockedTarget
+			return nil, ErrBlockedTarget
 		}
-		return nil
+		return []net.IP{ip}, nil
 	}
 
 	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, value)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidURL, err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidURL, err)
 	}
 	if len(addresses) == 0 {
-		return ErrInvalidURL
+		return nil, ErrInvalidURL
 	}
 
+	resolvedIPs := make([]net.IP, 0, len(addresses))
 	for _, address := range addresses {
 		if isPrivateOrLocalIP(address.IP) {
-			return ErrBlockedTarget
+			return nil, ErrBlockedTarget
 		}
+		resolvedIPs = append(resolvedIPs, address.IP)
 	}
 
-	return nil
+	return resolvedIPs, nil
 }
 
 func isExplicitlyBlockedHostname(hostname string) bool {

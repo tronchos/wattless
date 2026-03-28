@@ -1,9 +1,31 @@
 import type {
   APIErrorPayload,
+  ScanJobResponse,
   ScanReport,
 } from "@/lib/types";
 
-export async function scanURL(url: string): Promise<ScanReport> {
+export class APIError extends Error {
+  status: number;
+  retryAfterSeconds: number | null;
+  job?: ScanJobResponse;
+
+  constructor(
+    message: string,
+    options: {
+      status: number;
+      retryAfterSeconds?: number | null;
+      job?: ScanJobResponse;
+    },
+  ) {
+    super(message);
+    this.name = "APIError";
+    this.status = options.status;
+    this.retryAfterSeconds = options.retryAfterSeconds ?? null;
+    this.job = options.job;
+  }
+}
+
+export async function submitScan(url: string): Promise<ScanJobResponse> {
   const response = await fetch("/api/scan", {
     method: "POST",
     headers: {
@@ -13,12 +35,134 @@ export async function scanURL(url: string): Promise<ScanReport> {
     cache: "no-store",
   });
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as APIErrorPayload | null;
-    throw new Error(payload?.error ?? "El escaneo falló");
+  return parseJobResponse(response, "El escaneo no pudo encolarse");
+}
+
+export async function pollScanJob(jobId: string): Promise<ScanJobResponse> {
+  const response = await fetch(`/api/scan/${jobId}`, {
+    cache: "no-store",
+  });
+
+  return parseJobResponse(response, "No se pudo consultar el estado del turno");
+}
+
+export function isScanReport(value: unknown): value is ScanReport {
+  if (!isRecord(value)) {
+    return false;
   }
 
-  return (await response.json()) as ScanReport;
+  return (
+    typeof value.url === "string" &&
+    typeof value.score === "string" &&
+    typeof value.total_bytes_transferred === "number" &&
+    Array.isArray(value.vampire_elements)
+  );
+}
+
+export function isScanJobResponse(value: unknown): value is ScanJobResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const status = value.status;
+  if (
+    typeof value.job_id !== "string" ||
+    typeof value.url !== "string" ||
+    typeof value.position !== "number" ||
+    typeof status !== "string"
+  ) {
+    return false;
+  }
+
+  if (
+    status !== "queued" &&
+    status !== "scanning" &&
+    status !== "completed" &&
+    status !== "failed" &&
+    status !== "expired"
+  ) {
+    return false;
+  }
+
+  if (
+    value.estimated_wait_seconds !== undefined &&
+    typeof value.estimated_wait_seconds !== "number"
+  ) {
+    return false;
+  }
+
+  if (value.deduplicated !== undefined && typeof value.deduplicated !== "boolean") {
+    return false;
+  }
+
+  if (value.error !== undefined && typeof value.error !== "string") {
+    return false;
+  }
+
+  if (value.report !== undefined && !isScanReport(value.report)) {
+    return false;
+  }
+
+  return true;
+}
+
+async function parseJobResponse(
+  response: Response,
+  fallbackMessage: string,
+): Promise<ScanJobResponse> {
+  const retryAfterSeconds = parseRetryAfter(response.headers.get("Retry-After"));
+  const payload = (await response.json().catch(() => null)) as unknown;
+
+  if (!response.ok) {
+    const errorPayload = asAPIErrorPayload(payload);
+    const conflictJob = extractConflictJob(payload);
+    throw new APIError(errorPayload?.error ?? fallbackMessage, {
+      status: response.status,
+      retryAfterSeconds,
+      job: conflictJob,
+    });
+  }
+
+  if (!isScanJobResponse(payload)) {
+    throw new Error("La respuesta del servidor no tiene el formato esperado.");
+  }
+
+  return payload;
+}
+
+function extractConflictJob(payload: unknown): ScanJobResponse | undefined {
+  if (!isRecord(payload) || !("job" in payload)) {
+    return undefined;
+  }
+
+  return isScanJobResponse(payload.job) ? payload.job : undefined;
+}
+
+function asAPIErrorPayload(payload: unknown): APIErrorPayload | null {
+  if (!isRecord(payload) || typeof payload.error !== "string") {
+    return null;
+  }
+
+  return {
+    error: payload.error,
+  };
+}
+
+function parseRetryAfter(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export function formatBytes(bytes: number): string {

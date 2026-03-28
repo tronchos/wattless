@@ -3,6 +3,7 @@ const defaultDevelopmentScannerURLs = [
   "http://localhost:8081",
   "http://localhost:18080",
 ] as const;
+export const clientIdentityCookieName = "wattless_client_id";
 
 let resolvedScannerURL: string | null = null;
 let pendingScannerURL: Promise<string> | null = null;
@@ -56,20 +57,40 @@ async function isHealthyScanner(baseURL: string): Promise<boolean> {
   }
 }
 
-export async function forwardJSON(
+export async function forwardScannerRequest(
+  request: Request,
   path: string,
-  body: unknown,
-): Promise<Response> {
+  init: {
+    method: "GET" | "POST";
+    body?: unknown;
+  }
+): Promise<{
+  upstream: Response;
+  clientIdentity: string;
+  shouldSetCookie: boolean;
+}> {
   const scannerAPIURL = await getScannerAPIURL();
+  const headers = new Headers();
+  const { value: clientIdentity, shouldSetCookie } = getOrCreateClientIdentity(request);
 
-  return fetch(`${scannerAPIURL}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  if (init.body !== undefined) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  copyClientIPHeader(request, headers, "x-forwarded-for");
+  copyClientIPHeader(request, headers, "x-real-ip");
+  headers.set("x-wattless-client-id", clientIdentity);
+
+  return {
+    upstream: await fetch(`${scannerAPIURL}${path}`, {
+      method: init.method,
+      headers,
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      cache: "no-store",
+    }),
+    clientIdentity,
+    shouldSetCookie,
+  };
 }
 
 export async function fetchHealth(): Promise<Response> {
@@ -78,4 +99,65 @@ export async function fetchHealth(): Promise<Response> {
   return fetch(`${scannerAPIURL}/healthz`, {
     cache: "no-store",
   });
+}
+
+function copyClientIPHeader(
+  request: Request,
+  headers: Headers,
+  headerName: "x-forwarded-for" | "x-real-ip",
+) {
+  const value = request.headers.get(headerName);
+  if (value?.trim()) {
+    headers.set(headerName, value.trim());
+  }
+}
+
+function getOrCreateClientIdentity(request: Request): {
+  value: string;
+  shouldSetCookie: boolean;
+} {
+  const existingCookie = readCookie(request, clientIdentityCookieName);
+  if (existingCookie) {
+    return {
+      value: existingCookie,
+      shouldSetCookie: false,
+    };
+  }
+
+  return {
+    value: `wlc_${crypto.randomUUID()}`,
+    shouldSetCookie: true,
+  };
+}
+
+function readCookie(request: Request, cookieName: string): string | null {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookies = cookieHeader.split(";");
+  for (const entry of cookies) {
+    const [rawName, ...rawValueParts] = entry.split("=");
+    if (!rawName || rawValueParts.length === 0) {
+      continue;
+    }
+
+    if (rawName.trim() !== cookieName) {
+      continue;
+    }
+
+    const value = rawValueParts.join("=").trim();
+    if (!value) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return null;
 }

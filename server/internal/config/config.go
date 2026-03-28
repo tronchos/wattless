@@ -11,6 +11,11 @@ type Config struct {
 	Port                        string
 	ClientOrigin                string
 	RequestTimeout              time.Duration
+	ConcurrentScanLimit         int
+	MaxQueueSize                int
+	DailyIPScanLimit            int
+	JobTTL                      time.Duration
+	ResultTTL                   time.Duration
 	NavigationTimeout           time.Duration
 	NetworkIdleWait             time.Duration
 	ViewportWidth               int
@@ -33,6 +38,11 @@ func Load() Config {
 		Port:                        envOrDefault("PORT", "8080"),
 		ClientOrigin:                envOrDefault("CLIENT_ORIGIN", "http://localhost:3000"),
 		RequestTimeout:              durationOrDefault("REQUEST_TIMEOUT", 20*time.Second),
+		ConcurrentScanLimit:         intOrDefault("CONCURRENT_SCAN_LIMIT", 3),
+		MaxQueueSize:                intOrDefault("MAX_QUEUE_SIZE", 20),
+		DailyIPScanLimit:            intOrDefault("DAILY_IP_SCAN_LIMIT", 20),
+		JobTTL:                      durationOrDefault("JOB_TTL", 5*time.Minute),
+		ResultTTL:                   durationOrDefault("RESULT_TTL", 3*time.Minute),
 		NavigationTimeout:           durationOrDefault("NAVIGATION_TIMEOUT", 15*time.Second),
 		NetworkIdleWait:             durationOrDefault("NETWORK_IDLE_WAIT", 1500*time.Millisecond),
 		ViewportWidth:               intOrDefault("VIEWPORT_WIDTH", 1440),

@@ -213,6 +213,24 @@ export interface ScanReport {
   warnings: string[];
 }
 
+export type ScanJobStatus =
+  | "queued"
+  | "scanning"
+  | "completed"
+  | "failed"
+  | "expired";
+
+export interface ScanJobResponse {
+  job_id: string;
+  url: string;
+  status: ScanJobStatus;
+  position: number;
+  estimated_wait_seconds?: number;
+  deduplicated?: boolean;
+  report?: ScanReport;
+  error?: string;
+}
+
 export interface APIErrorPayload {
   error: string;
 }

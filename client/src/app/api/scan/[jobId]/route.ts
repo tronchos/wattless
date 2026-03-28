@@ -10,47 +10,34 @@ export const dynamic = "force-dynamic";
 
 const allowedUpstreamStatuses = new Set([200, 202, 400, 404, 409, 410, 429, 503]);
 
-export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  if (!body || typeof body.url !== "string" || !body.url.trim()) {
-    return NextResponse.json({ error: "Payload inválido" }, { status: 400 });
-  }
-
-  let normalizedURL = body.url.trim();
-  if (!/^https?:\/\//i.test(normalizedURL)) {
-    normalizedURL = `https://${normalizedURL}`;
-  }
-
-  try {
-    new URL(normalizedURL);
-  } catch {
-    return NextResponse.json(
-      { error: "La URL no es válida" },
-      { status: 400 },
-    );
-  }
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ jobId: string }> },
+) {
+  const { jobId } = await params;
 
   try {
     const {
       upstream,
       clientIdentity,
       shouldSetCookie,
-    } = await forwardScannerRequest(request, "/api/v1/scans", {
-      method: "POST",
-      body: { url: normalizedURL },
-    });
+    } = await forwardScannerRequest(
+      request,
+      `/api/v1/scans/${jobId}`,
+      { method: "GET" },
+    );
     const payload = await upstream.json().catch(() => {
-      console.error("[scan route] Failed to parse upstream JSON response", {
+      console.error("[scan job route] Failed to parse upstream JSON response", {
         status: upstream.status,
-        url: normalizedURL,
+        jobId,
       });
       return { error: "Error inesperado" };
     });
 
     if (!allowedUpstreamStatuses.has(upstream.status)) {
-      console.error("[scan route] Unexpected upstream status", {
+      console.error("[scan job route] Unexpected upstream status", {
         status: upstream.status,
-        url: normalizedURL,
+        jobId,
       });
       return NextResponse.json(
         { error: "Respuesta inesperada del escáner" },
@@ -63,7 +50,7 @@ export async function POST(request: Request) {
     setClientIdentityCookie(response, clientIdentity, shouldSetCookie);
     return response;
   } catch (err) {
-    console.error("[scan route] Failed to contact scanner", err);
+    console.error("[scan job route] Failed to contact scanner", err);
     return NextResponse.json(
       { error: "No se pudo contactar con el escáner" },
       { status: 502 },

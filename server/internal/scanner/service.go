@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,13 @@ type Service struct {
 	logger         *slog.Logger
 }
 
+type PreparedTarget struct {
+	RawURL        string
+	NormalizedURL string
+	Hostname      string
+	ResolvedIP    string
+}
+
 const scannerVersion = "2026.03"
 
 func NewService(cfg config.Config, hostingChecker HostingChecker, insightsProvider insights.Provider, logger *slog.Logger) *Service {
@@ -45,17 +53,41 @@ func NewService(cfg config.Config, hostingChecker HostingChecker, insightsProvid
 }
 
 func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
-	startedAt := time.Now()
-
-	normalizedURL, hostname, err := urlutil.Normalize(rawURL)
+	target, err := s.PrepareTarget(ctx, rawURL)
 	if err != nil {
 		return Report{}, err
 	}
-	if err := urlutil.ValidatePublicTarget(ctx, hostname); err != nil {
-		return Report{}, err
+
+	return s.ScanPrepared(ctx, target)
+}
+
+func (s *Service) PrepareTarget(ctx context.Context, rawURL string) (PreparedTarget, error) {
+	normalizedURL, hostname, err := urlutil.Normalize(rawURL)
+	if err != nil {
+		return PreparedTarget{}, err
 	}
 
-	resources, perf, screenshot, warnings, err := s.runBrowserScan(ctx, normalizedURL)
+	resolvedIPs, err := urlutil.ValidatePublicTarget(ctx, hostname)
+	if err != nil {
+		return PreparedTarget{}, err
+	}
+
+	resolvedIP, err := preferredResolvedIP(resolvedIPs)
+	if err != nil {
+		return PreparedTarget{}, err
+	}
+
+	return PreparedTarget{
+		RawURL:        rawURL,
+		NormalizedURL: normalizedURL,
+		Hostname:      hostname,
+		ResolvedIP:    resolvedIP,
+	}, nil
+}
+
+func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Report, error) {
+	startedAt := time.Now()
+	resources, perf, screenshot, warnings, err := s.runBrowserScan(ctx, target)
 	if err != nil {
 		return Report{}, err
 	}
@@ -64,7 +96,7 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 	}
 	resources, resourceGroups := enrichResourcesForAnalysis(resources, perf, screenshot.ViewportWidth, screenshot.ViewportHeight)
 
-	hostingResult, hostingWarnings := s.resolveHosting(ctx, hostname)
+	hostingResult, hostingWarnings := s.resolveHosting(ctx, target.Hostname)
 	warnings = append(warnings, hostingWarnings...)
 
 	totalBytes := int64(0)
@@ -99,15 +131,15 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 			FailureReason:         resource.FailureReason,
 			TransferShare:         shareOf(resource.Bytes, totalBytes),
 			EstimatedSavingsBytes: savings,
-			PositionBand:     resource.PositionBand,
-			VisualRole:       resource.VisualRole,
-			DOMTag:           resource.DOMTag,
-			LoadingAttr:      resource.LoadingAttr,
-			FetchPriority:    resource.FetchPriority,
-			ResponsiveImage:  resource.ResponsiveImage,
-			IsThirdPartyTool: resource.IsThirdPartyTool,
-			ThirdPartyKind:   resource.ThirdPartyKind,
-			BoundingBox:      resource.BoundingBox,
+			PositionBand:          resource.PositionBand,
+			VisualRole:            resource.VisualRole,
+			DOMTag:                resource.DOMTag,
+			LoadingAttr:           resource.LoadingAttr,
+			FetchPriority:         resource.FetchPriority,
+			ResponsiveImage:       resource.ResponsiveImage,
+			IsThirdPartyTool:      resource.IsThirdPartyTool,
+			ThirdPartyKind:        resource.ThirdPartyKind,
+			BoundingBox:           resource.BoundingBox,
 		})
 	}
 
@@ -118,7 +150,7 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 	finalScore := score.FromCO2(grams)
 
 	report := Report{
-		URL:                   normalizedURL,
+		URL:                   target.NormalizedURL,
 		Score:                 finalScore,
 		TotalBytesTransferred: totalBytes,
 		CO2GramsPerVisit:      grams,
@@ -172,11 +204,11 @@ func (s *Service) Scan(ctx context.Context, rawURL string) (Report, error) {
 
 	providerResult, err := s.insights.SummarizeReport(ctx, reportContext)
 	if err != nil {
-		s.logger.Warn("report_insights_failed", "url", normalizedURL, "error", err)
+		s.logger.Warn("report_insights_failed", "url", target.NormalizedURL, "error", err)
 		report.Warnings = append(report.Warnings, "La capa de IA no pudo enriquecer el informe; se usaron recomendaciones de respaldo.")
 		fallbackResult, fallbackErr := insights.NewRuleBasedProvider().SummarizeReport(ctx, reportContext)
 		if fallbackErr != nil {
-			s.logger.Warn("report_insights_fallback_failed", "url", normalizedURL, "error", fallbackErr)
+			s.logger.Warn("report_insights_fallback_failed", "url", target.NormalizedURL, "error", fallbackErr)
 		} else {
 			providerResult = fallbackResult
 		}
@@ -252,8 +284,8 @@ func (s *Service) resolveHosting(ctx context.Context, hostname string) (hosting.
 	return result, nil
 }
 
-func (s *Service) runBrowserScan(ctx context.Context, targetURL string) ([]enrichedResource, PerformanceMetrics, Screenshot, []string, error) {
-	browserURL, cleanup, err := s.launchBrowser()
+func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]enrichedResource, PerformanceMetrics, Screenshot, []string, error) {
+	browserURL, cleanup, err := s.launchBrowser(target.Hostname, target.ResolvedIP)
 	if err != nil {
 		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
 	}
@@ -265,10 +297,7 @@ func (s *Service) runBrowserScan(ctx context.Context, targetURL string) ([]enric
 	}
 	defer func() { _ = browser.Close() }()
 
-	deadlineCtx, cancel := context.WithTimeout(ctx, s.cfg.RequestTimeout)
-	defer cancel()
-
-	browser = browser.Context(deadlineCtx)
+	browser = browser.Context(ctx)
 	page, err := browser.Page(proto.TargetCreateTarget{})
 	if err != nil {
 		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
@@ -296,7 +325,7 @@ func (s *Service) runBrowserScan(ctx context.Context, targetURL string) ([]enric
 
 	resources := map[string]*rawResource{}
 	mu := sync.Mutex{}
-	pageHostname := resourceHostname(targetURL)
+	pageHostname := resourceHostname(target.NormalizedURL)
 
 	go page.EachEvent(func(event *proto.NetworkResponseReceived) {
 		mu.Lock()
@@ -357,15 +386,15 @@ func (s *Service) runBrowserScan(ctx context.Context, targetURL string) ([]enric
 	})()
 
 	page = page.Timeout(s.cfg.NavigationTimeout)
-	if err := page.Navigate(targetURL); err != nil {
+	if err := page.Navigate(target.NormalizedURL); err != nil {
 		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
 	}
 	if err := page.WaitLoad(); err != nil {
 		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
 	}
 	select {
-	case <-deadlineCtx.Done():
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, deadlineCtx.Err()
+	case <-ctx.Done():
+		return nil, PerformanceMetrics{}, Screenshot{}, nil, ctx.Err()
 	case <-time.After(s.cfg.NetworkIdleWait):
 	}
 
@@ -384,7 +413,7 @@ func (s *Service) runBrowserScan(ctx context.Context, targetURL string) ([]enric
 	}
 
 	warnings := make([]string, 0, 3)
-	primingWarnings, err := primeScrollableContent(deadlineCtx, page, metrics, s.cfg)
+	primingWarnings, err := primeScrollableContent(ctx, page, metrics, s.cfg)
 	if err != nil {
 		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
 	}
@@ -463,13 +492,17 @@ func (s *Service) runBrowserScan(ctx context.Context, targetURL string) ([]enric
 	return enriched, performanceMetrics, screenshot, warnings, nil
 }
 
-func (s *Service) launchBrowser() (string, func(), error) {
+func (s *Service) launchBrowser(hostname, resolvedIP string) (string, func(), error) {
 	instance := launcher.New().
 		Headless(true).
-		Leakless(false).
+		Leakless(true).
 		Set("disable-gpu").
 		Set("no-sandbox").
 		Set("disable-dev-shm-usage")
+
+	if hostname != "" && resolvedIP != "" {
+		instance = instance.Set("host-resolver-rules", fmt.Sprintf("MAP %s %s", hostname, chromiumResolverAddress(resolvedIP)))
+	}
 
 	if s.cfg.BrowserBin != "" {
 		instance = instance.Bin(s.cfg.BrowserBin)
@@ -481,6 +514,34 @@ func (s *Service) launchBrowser() (string, func(), error) {
 	}
 
 	return url, instance.Kill, nil
+}
+
+func preferredResolvedIP(addresses []net.IP) (string, error) {
+	for _, address := range addresses {
+		if ipv4 := address.To4(); ipv4 != nil {
+			return ipv4.String(), nil
+		}
+	}
+
+	for _, address := range addresses {
+		if address == nil {
+			continue
+		}
+
+		value := address.String()
+		if value != "" {
+			return value, nil
+		}
+	}
+
+	return "", fmt.Errorf("%w: no public IP available", urlutil.ErrInvalidURL)
+}
+
+func chromiumResolverAddress(address string) string {
+	if strings.Contains(address, ":") {
+		return "[" + address + "]"
+	}
+	return address
 }
 
 func capturePerformance(page *rod.Page) (PerformanceMetrics, error) {

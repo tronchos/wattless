@@ -13,6 +13,7 @@ import (
 	"github.com/tronchos/wattless/server/internal/hosting"
 	apihttp "github.com/tronchos/wattless/server/internal/http"
 	"github.com/tronchos/wattless/server/internal/insights"
+	"github.com/tronchos/wattless/server/internal/queue"
 	"github.com/tronchos/wattless/server/internal/scanner"
 )
 
@@ -35,10 +36,15 @@ func main() {
 		insightProvider = insights.NewCompositeProvider(geminiProvider, ruleBasedProvider)
 	}
 	scanService := scanner.NewService(cfg, hostingClient, insightProvider, logger)
+	browserPool := scanner.NewBrowserPool(cfg.ConcurrentScanLimit)
+	jobQueue := queue.New(cfg, scanService, browserPool, logger)
+	cleanupCtx, stopCleanup := context.WithCancel(context.Background())
+	defer stopCleanup()
+	jobQueue.StartCleanup(cleanupCtx)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           apihttp.NewRouter(cfg, scanService, logger),
+		Handler:           apihttp.NewRouter(cfg, jobQueue, logger),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -60,11 +66,26 @@ func main() {
 	<-ctx.Done()
 	logger.Info("server_shutting_down")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownTimeout := maxDuration(10*time.Second, cfg.RequestTimeout+5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+
+	stopCleanup()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("shutdown_failed", "error", err)
 		os.Exit(1)
 	}
+
+	if err := jobQueue.Shutdown(shutdownCtx); err != nil {
+		logger.Error("queue_shutdown_failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func maxDuration(left, right time.Duration) time.Duration {
+	if right > left {
+		return right
+	}
+	return left
 }
