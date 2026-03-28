@@ -89,17 +89,17 @@ const VampireRow = memo(function VampireRow({
         type="button"
         aria-label={`Select asset ${element.url.split("/").pop() || element.type}`}
         onClick={() => onSelect(element.id)}
-        className="w-full px-4 py-4 text-left md:px-5"
+        className="w-full px-4 py-3.5 text-left md:px-5"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-headline font-bold text-on-surface" title={element.url}>
               {element.url.split("/").pop() || formatResourceLabel(element.type)}
             </div>
-            <div className="mt-1 text-xs leading-5 text-on-surface-variant break-all">
+            <div className="mt-1 truncate text-xs leading-5 text-on-surface-variant" title={element.url}>
               {element.url}
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-on-surface-variant">
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-on-surface-variant">
               <span className={`rounded-full px-2 py-0.5 font-label font-bold ${coverage.className}`}>
                 {coverage.label}
               </span>
@@ -134,13 +134,7 @@ const VampireRow = memo(function VampireRow({
       </button>
 
       {isActive ? (
-        <DominantAssetDetail
-          element={element}
-          coverageLabel={coverage.label}
-          coverageClassName={coverage.className}
-          canCenterInInspector={coverage.label === "Visible in inspector"}
-          onCenterInInspector={() => onSelect(element.id)}
-        />
+        <DominantAssetDetail element={element} />
       ) : null}
     </article>
   );
