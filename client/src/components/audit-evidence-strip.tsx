@@ -49,7 +49,7 @@ export function AuditEvidenceStrip({ report }: AuditEvidenceStripProps) {
       {items.map((item) => (
         <article
           key={item.label}
-          className="surface-secondary rounded-[1.2rem] px-4 py-4"
+          className="bg-surface-container-low rounded-3xl px-6 py-6 border border-outline-variant/5 hover:bg-surface-container transition-colors"
         >
           <p className="section-kicker">{item.label}</p>
           <div className="mt-3 text-2xl font-headline font-bold text-white">

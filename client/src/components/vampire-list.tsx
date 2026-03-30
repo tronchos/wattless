@@ -79,10 +79,10 @@ const VampireRow = memo(function VampireRow({
 
   return (
     <article
-      className={`overflow-hidden rounded-[1.35rem] border transition-colors ${
+      className={`overflow-hidden rounded-[1.35rem] border transition-all duration-300 ${
         isActive
-          ? "border-primary/25 bg-surface-container-highest"
-          : "border-outline-variant/10 bg-surface-container-low hover:bg-surface-container"
+          ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 shadow-[0_0_15px_rgba(52,211,153,0.1)]"
+          : "border-outline-variant/10 bg-surface-container-low hover:bg-surface-container hover:border-outline-variant/30"
       }`}
     >
       <button

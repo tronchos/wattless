@@ -9,6 +9,11 @@ services:
       PORT: 8080
       CLIENT_ORIGIN: http://localhost:${CLIENT_PORT:-3000}
       BROWSER_BIN: /usr/bin/chromium
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-60s}
+      AI_PROVIDER: ${AI_PROVIDER:-rule_based}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-12s}
     ports:
       - "${SERVER_PORT:-18080}:8080"
     volumes:

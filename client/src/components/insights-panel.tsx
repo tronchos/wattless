@@ -54,17 +54,18 @@ export function InsightsPanel({
   const resolvedActiveAction = activeAction ?? fallbackActiveAction;
 
   return (
-    <section id="insights" className="surface-secondary rounded-[1.45rem] p-6 lg:p-8">
-      <div className="flex flex-col gap-6">
+    <section id="insights" className="bg-surface-container/40 backdrop-blur-xl border border-primary/20 rounded-3xl p-6 lg:p-8 relative overflow-hidden shadow-xl">
+      <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-[80px] pointer-events-none -translate-y-1/2 translate-x-1/3"></div>
+      <div className="flex flex-col gap-6 relative z-10">
         <div>
           <div className="flex items-center gap-2">
-            <span className="section-kicker">Síntesis editorial</span>
-            <span className="soft-chip bg-[rgba(155,214,126,0.08)] text-[var(--accent)]">
-              <Sparkles className="h-3.5 w-3.5" />
+            <span className="text-[10px] uppercase font-bold tracking-widest text-primary">SÍNTESIS EDITORIAL</span>
+            <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-primary/10 text-primary flex items-center gap-1 border border-primary/20">
+              <Sparkles className="h-3 w-3" />
               {report.insights.provider}
             </span>
           </div>
-          <p className="editorial-copy mt-4 text-xl lg:text-2xl leading-relaxed text-white">
+          <p className="mt-4 text-xl lg:text-2xl leading-relaxed text-on-surface font-headline font-semibold">
             {report.insights.executive_summary}
           </p>
           {report.insights.pitch_line ? (
@@ -75,8 +76,8 @@ export function InsightsPanel({
         </div>
 
         {compactActions.length > 0 ? (
-          <div className="mt-2 border-t border-[rgba(255,255,255,0.06)] pt-6">
-            <div className="section-kicker">Top Actions</div>
+          <div className="mt-2 border-t border-outline-variant/10 pt-6">
+            <div className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant">Top Actions</div>
             <div className="mt-4 space-y-3">
               {compactActions.map((action) => {
                 const isActive = selectedElementID
@@ -94,17 +95,17 @@ export function InsightsPanel({
                         onSelectElement(nextID);
                       }
                     }}
-                    className={`w-full rounded-2xl px-4 py-4 text-left transition-colors ${
+                    className={`w-full rounded-2xl px-4 py-4 text-left transition-colors border ${
                       isActive
-                        ? "bg-[rgba(155,214,126,0.08)]"
-                        : "bg-[rgba(255,255,255,0.03)] hover:bg-[rgba(255,255,255,0.05)]"
+                        ? "bg-primary/10 border-primary/20"
+                        : "bg-surface-container-low border-outline-variant/5 hover:bg-surface-container-highest"
                     }`}
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="soft-chip bg-[rgba(255,255,255,0.05)]">
+                      <span className="px-2 py-1 bg-surface-container-highest rounded-md text-[10px] font-bold text-on-surface-variant font-label">
                         {action.confidence}
                       </span>
-                      <span className="soft-chip bg-[rgba(255,255,255,0.05)]">
+                      <span className="px-2 py-1 bg-surface-container-highest rounded-md text-[10px] font-bold text-on-surface-variant font-label">
                         {action.likely_lcp_impact}
                       </span>
                     </div>

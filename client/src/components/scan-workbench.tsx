@@ -198,39 +198,47 @@ export function ScanWorkbench() {
               ) : null}
 
               <div className="space-y-8">
-                <section className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
-                  <ScoreRing
-                    score={report.score}
-                    grams={formatGrams(report.co2_grams_per_visit)}
-                  />
-                  <MetricCard
-                    label="Payload size"
-                    value={formatBytes(report.total_bytes_transferred)}
-                    caption={`${report.summary.total_requests.toLocaleString("es-CO")} requests · ${formatHostingLabel(report)}`}
-                    hint="Transferencia observada durante la visita sintética."
-                    progress={Math.min(
-                      100,
-                      (report.total_bytes_transferred /
-                        Math.max(
-                          report.total_bytes_transferred +
-                            report.summary.potential_savings_bytes,
-                          1,
-                        )) *
+                <section className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr_1fr] gap-4 lg:gap-6">
+                  <div className="xl:col-span-1 flex flex-col h-full w-full">
+                    <ScoreRing
+                      score={report.score}
+                      grams={formatGrams(report.co2_grams_per_visit)}
+                    />
+                  </div>
+                  
+                  <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6 h-full w-full">
+                    <MetricCard
+                      label="Payload size"
+                      value={formatBytes(report.total_bytes_transferred)}
+                      caption={`${report.summary.total_requests.toLocaleString("es-CO")} requests · ${formatHostingLabel(report)}`}
+                      hint="Transferencia observada durante la visita sintética."
+                      progress={Math.min(
                         100,
-                    )}
-                    icon={Leaf}
-                  />
-                  <MetricCard
-                    label="Performance"
-                    value={formatRenderMetric(report.performance.lcp_ms, report.performance.render_metrics_complete)}
-                    caption={`FCP ${formatRenderMetric(report.performance.fcp_ms, report.performance.render_metrics_complete)} · Long Tasks ${formatMilliseconds(report.performance.long_tasks_total_ms)}`}
-                    hint="Render crítico y presión real de CPU."
-                    progress={renderMetricProgress(report.performance.lcp_ms, report.performance.render_metrics_complete)}
-                    icon={Gauge}
-                  />
-                </section>
+                        (report.total_bytes_transferred /
+                          Math.max(
+                            report.total_bytes_transferred +
+                              report.summary.potential_savings_bytes,
+                            1,
+                          )) *
+                          100,
+                      )}
+                      icon={Leaf}
+                    />
+                    <MetricCard
+                      label="Performance"
+                      value={formatRenderMetric(report.performance.lcp_ms, report.performance.render_metrics_complete)}
+                      caption={`FCP ${formatRenderMetric(report.performance.fcp_ms, report.performance.render_metrics_complete)} · Long Tasks ${formatMilliseconds(report.performance.long_tasks_total_ms)}`}
+                      hint="Render crítico y presión real de CPU."
+                      progress={renderMetricProgress(report.performance.lcp_ms, report.performance.render_metrics_complete)}
+                      icon={Gauge}
+                    />
+                  </div>
 
-                <AuditEvidenceStrip report={report} />
+                  {/* Segunda fila del Bento: Evidence Strip y Summary */}
+                  <div className="xl:col-span-3 w-full">
+                    <AuditEvidenceStrip report={report} />
+                  </div>
+                </section>
 
                 {report.analysis.findings.length > 0 ? (
                   <FindingsPanel findings={report.analysis.findings} />

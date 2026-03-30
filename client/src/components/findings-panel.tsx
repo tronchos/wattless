@@ -4,7 +4,7 @@ import {
   formatSeverityLabel,
 } from "@/lib/api";
 import type { AnalysisFinding } from "@/lib/types";
-import { AlertCircle, CheckCircle2, ChevronRight, Zap } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronRight, ChevronDown, Zap } from "lucide-react";
 
 interface FindingsPanelProps {
   findings: AnalysisFinding[];
@@ -91,11 +91,12 @@ export function FindingsPanel({ findings }: FindingsPanelProps) {
               </p>
 
               {finding.evidence.length > 0 && (
-                <div className="mt-auto pt-6">
-                  <div className="text-[10px] tracking-widest uppercase font-label text-on-surface-variant mb-3 font-semibold">
-                    Evidencia detectada
-                  </div>
-                  <ul className="space-y-2.5 text-sm leading-relaxed text-on-surface bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10">
+                <details className="mt-auto pt-6 group">
+                  <summary className="text-[10px] tracking-widest uppercase font-label text-on-surface-variant font-semibold cursor-pointer list-none flex items-center justify-between hover:text-primary transition-colors bg-surface-container-low p-2 rounded-lg">
+                    <span>Ver Evidencia ({finding.evidence.length})</span>
+                    <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
+                  </summary>
+                  <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-on-surface bg-surface-container-low p-5 rounded-2xl border border-outline-variant/5">
                     {finding.evidence.map((item, index) => (
                       <li key={`${finding.id}-${index}`} className="flex items-start gap-2.5">
                         <ChevronRight className="w-4 h-4 text-primary shrink-0 mt-0.5" />
@@ -103,7 +104,7 @@ export function FindingsPanel({ findings }: FindingsPanelProps) {
                       </li>
                     ))}
                   </ul>
-                </div>
+                </details>
               )}
             </article>
           ))}
