@@ -118,7 +118,7 @@ docker compose -f docker/compose.prod.yml up --build
 #### Backend
 
 - `PORT` default `8080`
-- `CLIENT_ORIGIN` default `http://localhost:3000`
+- `CLIENT_ORIGIN` default `http://localhost:3000,http://localhost:5173` (allowlist separada por comas)
 - `REQUEST_TIMEOUT` default `20s`
 - `NAVIGATION_TIMEOUT` default `15s`
 - `NETWORK_IDLE_WAIT` default `1500ms`

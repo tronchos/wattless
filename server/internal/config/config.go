@@ -38,7 +38,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		Port:                        envOrDefault("PORT", "8080"),
-		ClientOrigin:                envOrDefault("CLIENT_ORIGIN", "http://localhost:3000"),
+		ClientOrigin:                envOrDefault("CLIENT_ORIGIN", "http://localhost:3000,http://localhost:5173"),
 		RequestTimeout:              durationOrDefault("REQUEST_TIMEOUT", 20*time.Second),
 		ConcurrentScanLimit:         intOrDefault("CONCURRENT_SCAN_LIMIT", 3),
 		MaxQueueSize:                intOrDefault("MAX_QUEUE_SIZE", 20),

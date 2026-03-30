@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -253,7 +254,7 @@ func TestBuildRuleBasedAssetInsightDoesNotTreatGenericIconAsLogo(t *testing.T) {
 }
 
 func TestSummarizeReportProvidesFixesBeyondPrimaryAction(t *testing.T) {
-	result, err := NewRuleBasedProvider().SummarizeReport(nil, ReportContext{
+	result, err := NewRuleBasedProvider().SummarizeReport(context.TODO(), ReportContext{
 		SiteProfile: SiteProfileContext{
 			FrameworkHint: "astro",
 		},

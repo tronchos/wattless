@@ -400,42 +400,42 @@ func buildExecutiveSummary(report ReportContext) string {
 	hasMeasuredLCP := report.Performance.RenderMetricsComplete && report.Performance.LCPMS > 0
 	switch {
 	case top != nil && top.ID == "dominant_image_overdelivery":
-		return textualLead + "Un solo asset visual concentra demasiado peso para el valor que aporta. Antes de afinar el resto del sitio, conviene corregir esa sobreentrega desproporcionada."
+		return textualLead + "un solo asset visual concentra demasiado peso para el valor que aporta. Antes de afinar el resto del sitio, conviene corregir esa sobreentrega desproporcionada."
 	case top != nil && top.ID == "render_lcp_candidate":
-		return textualLead + "El cuello de botella principal está en el render crítico: Wattless detectó un recurso que coincide con el LCP y concentra el mejor retorno inmediato."
+		return textualLead + "el cuello de botella principal de esta página sigue estando en la carga inicial: Wattless detectó una oportunidad de recorte en el recurso que gobierna el LCP."
 	case top != nil && top.ID == "render_lcp_dom_node":
-		return textualLead + "El cuello de botella principal está en el render crítico: Wattless detectó un nodo del DOM que domina el LCP y conviene revisar CSS, tipografía y CPU antes de culpar assets visuales."
+		return textualLead + "el render crítico tiene margen claro de mejora: Wattless detectó un texto o estructura bloqueando el LCP. Conviene revisar CSS, tipografía y tiempo de ejecución antes de culpar imágenes."
 	case top != nil && top.ID == "main_thread_cpu_pressure":
 		if top.Confidence == "low" {
-			return textualLead + "La presión de CPU aparece cerca del umbral en este scan. No es la señal más estable del informe, pero conviene vigilarla porque puede competir con el render inicial."
+			return textualLead + "la presión de CPU aparece cerca del umbral en este scan. No es la señal más estable del informe, pero conviene vigilarla porque puede competir con el render inicial."
 		}
-		return textualLead + "El peso de red no explica todo el problema: Wattless detectó presión real de CPU y Long Tasks que compiten con la experiencia inicial."
+		return textualLead + "el peso de red no explica todo el problema: Wattless detectó presión real de CPU y Long Tasks que compiten con la experiencia inicial."
 	case top != nil && top.ID == "third_party_ads_overhead":
-		return textualLead + "El mayor coste evitable está en el stack publicitario: suma scripts, auctions e iframes externos antes de aportar valor editorial."
+		return textualLead + "el mayor coste evitable está en el stack publicitario: suma scripts, auctions e iframes externos antes de aportar valor editorial."
 	case top != nil && top.ID == "third_party_payment_overhead":
-		return textualLead + "El mayor coste total viene del ticketing/pago embebido. Antes de afinar grids secundarios, conviene reducir esa dependencia de terceros."
+		return textualLead + "el mayor coste total viene del ticketing/pago embebido. Antes de afinar grids secundarios, conviene reducir esa dependencia de terceros."
 	case top != nil && top.ID == "third_party_video_overhead":
-		return textualLead + "Una parte material del coste viene de players, iframes y thumbnails de video externos. Diferirlos devuelve margen sin tocar el contenido crítico."
+		return textualLead + "una parte material del coste viene de players, iframes y thumbnails de video externos. Diferirlos devuelve margen sin tocar el contenido crítico."
 	case top != nil && top.ID == "third_party_analytics_overhead":
-		return textualLead + "La capa de analítica ya mete suficiente ruido de red como para merecer recorte antes de seguir afinando detalles secundarios."
+		return textualLead + "la capa de analítica ya mete suficiente ruido de red como para merecer recorte antes de seguir afinando detalles secundarios."
 	case top != nil && top.ID == "legacy_image_format_overhead":
-		return textualLead + "Una parte material del peso de imagen sigue en formatos legacy. Aquí hay un recorte bastante limpio sin tocar el layout ni la narrativa visual."
+		return textualLead + "una parte material del peso de imagen sigue en formatos legacy. Aquí hay un recorte bastante limpio sin tocar el layout ni la narrativa visual."
 	case top != nil && top.ID == "legacy_font_format_overhead":
-		return textualLead + "Parte del coste tipográfico sigue viniendo de formatos legacy. Servir WOFF2 como camino principal da un recorte limpio en el arranque."
+		return textualLead + "parte del coste tipográfico sigue viniendo de formatos legacy. Servir WOFF2 como camino principal da un recorte limpio en el arranque."
 	case dominantThirdParty != nil:
-		return textualLead + fmt.Sprintf("El mayor coste total viene de %s: %s. Antes de afinar grids secundarios, conviene reducir esa dependencia de terceros.", strings.ToLower(withArticle(dominantThirdParty.Label)), formatBytes(dominantThirdParty.TotalBytes))
+		return textualLead + fmt.Sprintf("el mayor coste total viene de %s: %s. Antes de afinar grids secundarios, conviene reducir esa dependencia de terceros.", strings.ToLower(withArticle(dominantThirdParty.Label)), formatBytes(dominantThirdParty.TotalBytes))
 	case report.Summary.ThirdPartyBytes*2 >= report.TotalBytesTransferred && report.TotalBytesTransferred > 0:
-		return textualLead + "La experiencia inicial se sostiene, pero la mayor parte del peso total viene de terceros y eso infla bytes, variabilidad y coste por visita."
+		return textualLead + "la experiencia inicial se sostiene, pero la mayor parte del peso total viene de terceros y eso infla bytes, variabilidad y coste por visita."
 	case gallery != nil && gallery.TotalBytes >= 400_000 && hasMeasuredLCP && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
-		return textualLead + fmt.Sprintf("La home es rápida en el primer render, pero %s bajo el fold siguen inflando el coste por visita más de lo que parece.", withArticle(gallery.Label))
+		return textualLead + fmt.Sprintf("la home visual es ágil, pero %s bajo el fold siguen inflando el coste por visita más de lo que parece.", withArticle(gallery.Label))
 	case gallery != nil && gallery.TotalBytes >= 400_000 && hasMeasuredLCP && report.Performance.LCPMS < 2_000:
-		return textualLead + fmt.Sprintf("La home es rápida en el primer render, pero %s siguen inflando el coste por visita más de lo que parece.", withArticle(gallery.Label))
+		return textualLead + fmt.Sprintf("la home visual arranca bien, pero %s siguen inflando el coste por visita más de lo que parece.", withArticle(gallery.Label))
 	case report.Performance.LongTasksTotalMS >= 250:
-		return textualLead + "El peso de red no explica todo el problema: hay presión real de CPU y Long Tasks que compiten con la experiencia inicial."
+		return textualLead + "el peso de red no explica todo el problema: hay presión real de CPU y Long Tasks que compiten con la experiencia inicial."
 	case report.Analysis.Summary.FontBytes >= 250_000:
-		return textualLead + "La base es razonable, pero la pila tipográfica sigue siendo más cara de lo necesario para una carga inicial eficiente."
+		return textualLead + "la base es razonable, pero la pila tipográfica sigue siendo más cara de lo necesario para una carga inicial eficiente."
 	case !report.Performance.RenderMetricsComplete:
-		return textualLead + "La transferencia ya da señales útiles, pero este scan no capturó todas las métricas de render; conviene interpretar LCP/FCP con cautela y apoyarse más en bytes críticos, CPU y terceros."
+		return textualLead + "la transferencia ya da señales útiles, pero este scan no capturó todas las métricas de render; conviene apoyarse más en bytes críticos, CPU y terceros."
 	default:
 		return "El informe separa transferencia, render crítico y peso bajo el fold para que el siguiente arreglo tenga retorno real y no solo cambie un número aislado."
 	}
@@ -535,19 +535,11 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 	for index := range findings {
 		finding := &findings[index]
 		switch {
-		case asset.ID != "" && finding.ID == "dominant_image_overdelivery" && containsString(finding.RelatedResourceIDs, asset.ID):
-			candidates = append(candidates, finding)
-		case asset.VisualRole == "repeated_card_media" && finding.ID == "repeated_gallery_overdelivery" && containsString(finding.RelatedResourceIDs, asset.ID):
-			candidates = append(candidates, finding)
 		case asset.VisualRole == "lcp_candidate" && finding.ID == "render_lcp_candidate":
-			candidates = append(candidates, finding)
-		case (asset.VisualRole == "hero_media" || asset.VisualRole == "above_fold_media") && finding.ID == "heavy_above_fold_media":
 			candidates = append(candidates, finding)
 		case asset.Type == "font" && finding.ID == "font_stack_overweight":
 			candidates = append(candidates, finding)
 		case asset.Type == "font" && finding.ID == "legacy_font_format_overhead":
-			candidates = append(candidates, finding)
-		case asset.Type == "image" && finding.ID == "legacy_image_format_overhead" && containsString(finding.RelatedResourceIDs, asset.ID):
 			candidates = append(candidates, finding)
 		case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics" && finding.ID == "third_party_analytics_overhead":
 			candidates = append(candidates, finding)
@@ -1511,7 +1503,7 @@ export function ResponsiveCardImage() {
 
 func responsiveImageShouldEager(finding AnalysisFindingContext) bool {
 	haystack := strings.ToLower(strings.TrimSpace(finding.Summary + " " + strings.Join(finding.Evidence, " ")))
-	return !containsAny(haystack, "below fold", "near fold", "posición visual: below fold", "posición visual: near fold")
+	return containsAny(haystack, "above fold", "above_fold", "hero_media", "hero media", "lcp")
 }
 
 func legacyImageFormatCode(framework string) string {

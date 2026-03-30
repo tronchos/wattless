@@ -316,6 +316,35 @@ func TestBuildAnalysisKeepsSmallRealLCPAsRenderCandidate(t *testing.T) {
 	}
 }
 
+func TestBuildAnalysisSuppressesFastSmallRealLCPFinding(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:           "lcp-image",
+			URL:          "https://example.com/hero.webp",
+			Type:         "image",
+			MIMEType:     "image/webp",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        16_817,
+			BoundingBox:  &BoundingBox{X: 0, Y: 0, Width: 655, Height: 380},
+			PositionBand: positionAboveFold,
+			VisualRole:   visualRoleLCPCandidate,
+		},
+	}
+
+	analysis := buildAnalysis(resources, PerformanceMetrics{
+		LCPMS:                 1400,
+		FCPMS:                 1100,
+		RenderMetricsComplete: true,
+		LCPResourceURL:        "https://example.com/hero.webp",
+		LCPResourceTag:        "img",
+	}, nil)
+
+	if hasFinding(analysis.Findings, "render_lcp_candidate") {
+		t.Fatalf("expected fast small real lcp resource to stay silent, got %#v", analysis.Findings)
+	}
+}
+
 func TestBuildThirdPartyFindingsIncludesAdsFinding(t *testing.T) {
 	resources := []enrichedResource{
 		{ID: "ad-1", Type: "script", Party: partyThird, Bytes: 220_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyAds},
@@ -375,17 +404,8 @@ func TestBuildAnalysisSkipsLegacyFontFindingWhenWOFFHasWOFF2Equivalent(t *testin
 	}
 }
 
-func TestRankVampireResourcesSuppressesHTMLInImgAndTinyNoise(t *testing.T) {
+func TestRankVampireResourcesSuppressesTinyImageNoise(t *testing.T) {
 	resources := []enrichedResource{
-		{
-			ID:          "html-img",
-			URL:         "https://example.com/subscription/",
-			Type:        "document",
-			MIMEType:    "text/html",
-			Bytes:       75_000,
-			DOMTag:      "img",
-			BoundingBox: &BoundingBox{X: 0, Y: 800, Width: 1, Height: 1},
-		},
 		{
 			ID:          "tiny-thumb",
 			URL:         "https://example.com/thumb.jpg",
@@ -405,12 +425,42 @@ func TestRankVampireResourcesSuppressesHTMLInImgAndTinyNoise(t *testing.T) {
 		},
 	}
 
-	ranked, _ := rankVampireResources(resources, nil, nil, 118_000)
+	ranked, _ := rankVampireResources(resources, nil, nil, 43_000)
 	for _, resource := range ranked {
-		if resource.ID == "html-img" || resource.ID == "tiny-thumb" {
+		if resource.ID == "tiny-thumb" {
 			t.Fatalf("expected noisy resources to be suppressed, got %#v", ranked)
 		}
 	}
+}
+
+func TestRankVampireResourcesKeepsHTMLInImgTargetsEligible(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:          "html-img",
+			URL:         "https://example.com/subscription/",
+			Type:        "document",
+			MIMEType:    "text/html",
+			Bytes:       75_000,
+			DOMTag:      "img",
+			BoundingBox: &BoundingBox{X: 0, Y: 800, Width: 320, Height: 180},
+		},
+		{
+			ID:           "real-font",
+			URL:          "https://example.com/font.woff2",
+			Type:         "font",
+			MIMEType:     "font/woff2",
+			Bytes:        40_000,
+			PositionBand: positionUnknown,
+		},
+	}
+
+	ranked, _ := rankVampireResources(resources, nil, nil, 115_000)
+	for _, resource := range ranked {
+		if resource.ID == "html-img" {
+			return
+		}
+	}
+	t.Fatalf("expected html served into img target to remain eligible, got %#v", ranked)
 }
 
 func TestRankVampireResourcesKeepsVisibleHTMLWidgetsWhenTheyAreNotBrokenImgTargets(t *testing.T) {

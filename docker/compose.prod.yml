@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 8080
-      CLIENT_ORIGIN: ${APP_BASE_URL:-http://localhost:3000}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:3000,http://localhost:5173}
       BROWSER_BIN: /usr/bin/chromium
       AI_PROVIDER: ${AI_PROVIDER:-rule_based}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}

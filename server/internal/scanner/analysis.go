@@ -157,7 +157,11 @@ func siteRoot(host string) string {
 }
 
 func sharesFirstPartyBrand(pageHostname, assetHostname string) bool {
-	pageTokens := brandTokens(pageHostname)
+	pageRoot := siteRoot(pageHostname)
+	etld, _ := publicsuffix.PublicSuffix(pageRoot)
+	pageBrand := strings.TrimSuffix(pageRoot, "."+etld)
+
+	pageTokens := brandTokens(pageBrand)
 	if len(pageTokens) == 0 {
 		return false
 	}
@@ -175,8 +179,7 @@ func sharesFirstPartyBrand(pageHostname, assetHostname string) bool {
 }
 
 func brandTokens(host string) map[string]struct{} {
-	root := siteRoot(host)
-	if root == "" {
+	if host == "" {
 		return nil
 	}
 
@@ -187,7 +190,7 @@ func brandTokens(host string) map[string]struct{} {
 		"uecdn": {}, "www2": {}, "app": {}, "apps": {}, "github": {}, "gitlab": {}, "pages": {},
 	}
 	tokens := make(map[string]struct{})
-	for _, token := range strings.FieldsFunc(root, func(r rune) bool {
+	for _, token := range strings.FieldsFunc(host, func(r rune) bool {
 		switch {
 		case r >= 'a' && r <= 'z':
 			return false
@@ -386,7 +389,7 @@ func classifyThirdPartyKind(resource enrichedResource) string {
 		return thirdPartyAnalytics
 	case containsAny(fullURL, "gtm.js", "assets.adobedtm"):
 		return thirdPartyAnalytics
-	case containsAny(host, "doubleclick", "googlesyndication", "googleadservices", "gampad", "adnxs", "adsrvr", "taboola", "outbrain", "criteo", "pubmatic", "amazon-adsystem") || containsAny(resourceURLPath, "/ads/", "/adunit", "/advertising/"):
+	case containsAny(host, "doubleclick", "googlesyndication", "googleadservices", "gampad", "adnxs", "adsrvr", "taboola", "outbrain", "criteo", "pubmatic", "amazon-adsystem") || containsAny(resourceURLPath, "/ads.js", "/adunit", "/advertising/"):
 		return thirdPartyAds
 	case containsAny(host, "intercom", "zendesk", "drift", "crisp", "helpscout"):
 		return thirdPartySupport
@@ -989,7 +992,7 @@ func buildLCPFinding(resources []enrichedResource, resource *enrichedResource, p
 			severity = "high"
 		}
 		if perf.RenderMetricsComplete && resource.Bytes < 150_000 && perf.LCPMS > 0 && perf.LCPMS < 1_500 {
-			severity = "low"
+			return nil
 		}
 
 		evidence := []string{
@@ -2027,7 +2030,7 @@ func isSuppressedHTMLVampireResource(resource enrichedResource) bool {
 	if !strings.Contains(mimeType, "html") {
 		return false
 	}
-	return strings.EqualFold(resource.DOMTag, "img") || resource.Type == "image"
+	return resource.Type == "fetch" || resource.Type == "other"
 }
 
 func vampirePriority(resource enrichedResource) int {

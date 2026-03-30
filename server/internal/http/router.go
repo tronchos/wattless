@@ -2,12 +2,14 @@ package http
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"math"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +43,7 @@ func NewRouter(cfg config.Config, jobQueue JobQueue, logger *slog.Logger) http.H
 	mux.HandleFunc("GET /healthz", h.handleHealth)
 	mux.HandleFunc("POST /api/v1/scans", h.handleSubmitScan)
 	mux.HandleFunc("GET /api/v1/scans/{jobID}", h.handleGetScan)
+	mux.HandleFunc("GET /api/v1/scans/{jobID}/screenshot", h.handleGetScreenshot)
 
 	return withLogging(logger, withSecurityHeaders(withCORS(cfg.ClientOrigin, mux)))
 }
@@ -166,6 +169,75 @@ func (h handler) handleGetScan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, job, h.logger)
 }
 
+func (h handler) handleGetScreenshot(w http.ResponseWriter, r *http.Request) {
+	jobID := strings.TrimSpace(r.PathValue("jobID"))
+	if jobID == "" {
+		writeJSONNoStore(w, http.StatusNotFound, errorResponse{Error: "No encontramos ese turno."}, h.logger)
+		return
+	}
+
+	job, err := h.queue.Get(r.Context(), jobID)
+	if err != nil {
+		switch {
+		case errors.Is(err, queue.ErrJobExpired):
+			var expiredErr *queue.ExpiredError
+			if errors.As(err, &expiredErr) {
+				writeJSONNoStore(w, http.StatusGone, expiredErr.Job, h.logger)
+				return
+			}
+			writeJSONNoStore(w, http.StatusGone, queue.JobResponse{
+				JobID:    jobID,
+				Status:   queue.StatusExpired,
+				Position: 0,
+				Error:    "Tu turno expiró. Envía un nuevo análisis.",
+			}, h.logger)
+		case errors.Is(err, queue.ErrJobNotFound):
+			writeJSONNoStore(w, http.StatusNotFound, errorResponse{Error: "No encontramos ese turno."}, h.logger)
+		default:
+			h.logger.Warn("scan_screenshot_failed", "job_id", jobID, "error", err)
+			writeJSONNoStore(w, http.StatusInternalServerError, errorResponse{Error: "Error interno del servidor"}, h.logger)
+		}
+		return
+	}
+
+	if job.Report == nil {
+		writeJSONNoStore(w, http.StatusNotFound, errorResponse{Error: "Screenshot no disponible."}, h.logger)
+		return
+	}
+
+	if len(job.Report.Screenshot.Tiles) == 0 {
+		writeJSONNoStore(w, http.StatusNotFound, errorResponse{Error: "No hay tiles de screenshot."}, h.logger)
+		return
+	}
+
+	tileIndex, err := parseTileIndex(r.URL.Query().Get("tile"), len(job.Report.Screenshot.Tiles))
+	if err != nil {
+		writeJSONNoStore(w, http.StatusBadRequest, errorResponse{Error: "El tile solicitado no es válido."}, h.logger)
+		return
+	}
+
+	tile := job.Report.Screenshot.Tiles[tileIndex]
+	data, err := base64.StdEncoding.DecodeString(tile.DataBase64)
+	if err != nil {
+		h.logger.Warn("scan_screenshot_decode_failed", "job_id", jobID, "tile", tile.ID, "error", err)
+		writeJSONNoStore(w, http.StatusInternalServerError, errorResponse{Error: "Error decodificando screenshot."}, h.logger)
+		return
+	}
+
+	mimeType := job.Report.Screenshot.MimeType
+	if mimeType == "" {
+		mimeType = "image/webp"
+	}
+
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Header().Set("Cache-Control", screenshotCacheControl(h.cfg.ResultTTL))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(data); err != nil {
+		h.logger.Warn("scan_screenshot_write_failed", "job_id", jobID, "tile", tile.ID, "error", err)
+	}
+}
+
 func isClientError(err error) bool {
 	return errors.Is(err, urlutil.ErrInvalidURL) || errors.Is(err, urlutil.ErrBlockedTarget)
 }
@@ -250,6 +322,11 @@ func writeJSON(w http.ResponseWriter, status int, payload any, logger *slog.Logg
 	}
 }
 
+func writeJSONNoStore(w http.ResponseWriter, status int, payload any, logger *slog.Logger) {
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, status, payload, logger)
+}
+
 func withSecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -259,11 +336,26 @@ func withSecurityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func withCORS(origin string, next http.Handler) http.Handler {
+func withCORS(allowedOrigins string, next http.Handler) http.Handler {
+	origins := strings.Split(allowedOrigins, ",")
+	for i := range origins {
+		origins[i] = strings.TrimSpace(origins[i])
+	}
+	allowAnyOrigin := len(origins) == 1 && origins[0] == "*"
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
+		reqOrigin := strings.TrimSpace(r.Header.Get("Origin"))
+		w.Header().Add("Vary", "Origin")
+
+		switch {
+		case allowAnyOrigin:
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		case reqOrigin != "" && slices.Contains(origins, reqOrigin):
+			w.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+		}
+
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Wattless-Client-Id")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -272,6 +364,27 @@ func withCORS(origin string, next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func parseTileIndex(raw string, totalTiles int) (int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, nil
+	}
+
+	index, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || index < 0 || index >= totalTiles {
+		return 0, errors.New("invalid tile index")
+	}
+
+	return index, nil
+}
+
+func screenshotCacheControl(ttl time.Duration) string {
+	seconds := int(math.Ceil(ttl.Seconds()))
+	if seconds < 1 {
+		seconds = 1
+	}
+	return "private, max-age=" + strconv.Itoa(seconds)
 }
 
 type statusRecorder struct {

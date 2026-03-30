@@ -7,7 +7,7 @@ services:
       dockerfile: docker/server.Dockerfile
     environment:
       PORT: 8080
-      CLIENT_ORIGIN: http://localhost:${CLIENT_PORT:-3000}
+      CLIENT_ORIGIN: http://localhost:${CLIENT_PORT:-3000},http://localhost:5173
       BROWSER_BIN: /usr/bin/chromium
       REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-60s}
       AI_PROVIDER: ${AI_PROVIDER:-rule_based}
