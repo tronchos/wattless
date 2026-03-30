@@ -87,7 +87,7 @@ func (s *Service) PrepareTarget(ctx context.Context, rawURL string) (PreparedTar
 
 func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Report, error) {
 	startedAt := time.Now()
-	resources, perf, screenshot, warnings, err := s.runBrowserScan(ctx, target)
+	resources, perf, screenshot, siteProfile, warnings, err := s.runBrowserScan(ctx, target)
 	if err != nil {
 		return Report{}, err
 	}
@@ -110,11 +110,11 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 	vampires := make([]ResourceSummary, 0, len(top))
 	potentialSavings := int64(0)
 	for _, resource := range resources {
-		potentialSavings += estimateSavingsBytes(resource.Type, resource.Bytes)
+		potentialSavings += estimateResourceSavings(resource)
 	}
 	visualMapped := 0
 	for _, resource := range top {
-		savings := estimateSavingsBytes(resource.Type, resource.Bytes)
+		savings := estimateResourceSavings(resource)
 		if resource.BoundingBox != nil {
 			visualMapped++
 		}
@@ -137,6 +137,9 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 			LoadingAttr:           resource.LoadingAttr,
 			FetchPriority:         resource.FetchPriority,
 			ResponsiveImage:       resource.ResponsiveImage,
+			NaturalWidth:          resource.NaturalWidth,
+			NaturalHeight:         resource.NaturalHeight,
+			VisibleRatio:          resource.VisibleRatio,
 			IsThirdPartyTool:      resource.IsThirdPartyTool,
 			ThirdPartyKind:        resource.ThirdPartyKind,
 			BoundingBox:           resource.BoundingBox,
@@ -157,6 +160,7 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 		HostingIsGreen:        hostingResult.IsGreen,
 		HostingVerdict:        string(hostingResult.Verdict),
 		HostedBy:              hostingResult.HostedBy,
+		SiteProfile:           siteProfile,
 		Summary:               summary,
 		BreakdownByType:       breakdownByType,
 		BreakdownByParty:      breakdownByParty,
@@ -176,6 +180,10 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 		HostingIsGreen:        report.HostingIsGreen,
 		HostingVerdict:        report.HostingVerdict,
 		HostedBy:              report.HostedBy,
+		SiteProfile: insights.SiteProfileContext{
+			FrameworkHint: report.SiteProfile.FrameworkHint,
+			Evidence:      append([]string(nil), report.SiteProfile.Evidence...),
+		},
 		Performance: insights.PerformanceContext{
 			LoadMS:                   report.Performance.LoadMS,
 			DOMContentLoadedMS:       report.Performance.DOMContentLoadedMS,
@@ -243,6 +251,9 @@ type enrichedResource struct {
 	LoadingAttr      string
 	FetchPriority    string
 	ResponsiveImage  bool
+	NaturalWidth     int
+	NaturalHeight    int
+	VisibleRatio     float64
 	SelectorHint     string
 	PositionBand     string
 	VisualRole       string
@@ -284,23 +295,23 @@ func (s *Service) resolveHosting(ctx context.Context, hostname string) (hosting.
 	return result, nil
 }
 
-func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]enrichedResource, PerformanceMetrics, Screenshot, []string, error) {
+func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]enrichedResource, PerformanceMetrics, Screenshot, SiteProfile, []string, error) {
 	browserURL, cleanup, err := s.launchBrowser(target.Hostname, target.ResolvedIP)
 	if err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 	defer cleanup()
 
 	browser := rod.New().ControlURL(browserURL)
 	if err := browser.Connect(); err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 	defer func() { _ = browser.Close() }()
 
 	browser = browser.Context(ctx)
 	page, err := browser.Page(proto.TargetCreateTarget{})
 	if err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 	defer func() { _ = page.Close() }()
 
@@ -310,16 +321,16 @@ func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]
 		DeviceScaleFactor: 1,
 		Mobile:            false,
 	}).Call(page); err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 
 	if err := (proto.NetworkEnable{}).Call(page); err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 
 	removePerfObserver, err := page.EvalOnNewDocument(performanceObserverScript())
 	if err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 	defer func() { _ = removePerfObserver() }()
 
@@ -387,20 +398,20 @@ func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]
 
 	page = page.Timeout(s.cfg.NavigationTimeout)
 	if err := page.Navigate(target.NormalizedURL); err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 	if err := page.WaitLoad(); err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 	select {
 	case <-ctx.Done():
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, ctx.Err()
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, ctx.Err()
 	case <-time.After(s.cfg.NetworkIdleWait):
 	}
 
 	performanceMetrics, err := capturePerformance(page)
 	if err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 
 	mu.Lock()
@@ -409,34 +420,34 @@ func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]
 
 	metrics, err := measureDocument(page, s.cfg)
 	if err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 
 	warnings := make([]string, 0, 3)
 	primingWarnings, err := primeScrollableContent(ctx, page, metrics, s.cfg)
 	if err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 	warnings = append(warnings, primingWarnings...)
 
 	metrics, err = measureDocument(page, s.cfg)
 	if err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 
 	if err := scrollToTop(page); err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 
-	elements, err := collectElementBoxes(page)
+	snapshot, err := collectDOMSnapshot(page)
 	if err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 
 	plan := buildScreenshotPlan(metrics, s.cfg)
 	screenshot, err := captureDocumentScreenshot(page, plan, s.cfg.FullPageCaptureQuality)
 	if err != nil {
-		return nil, PerformanceMetrics{}, Screenshot{}, nil, err
+		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 	if plan.Truncated {
 		warnings = append(warnings, fmt.Sprintf("Visual inspector capture truncated at %dpx for efficiency.", plan.CapturedHeight))
@@ -451,7 +462,7 @@ func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]
 		if resource.Bytes <= 0 && !resource.Failed && resource.StatusCode < 400 {
 			continue
 		}
-		matchedElement := matchDOMElement(resource.URL, elements)
+		matchedElement := matchDOMElement(resource.URL, snapshot.Elements)
 		var boundingBox *BoundingBox
 		if matchedElement != nil {
 			boundingBox = &BoundingBox{
@@ -477,6 +488,9 @@ func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]
 			LoadingAttr:     stringValue(matchedElement, func(element *domElement) string { return element.LoadingAttr }),
 			FetchPriority:   stringValue(matchedElement, func(element *domElement) string { return element.FetchPriority }),
 			ResponsiveImage: boolValue(matchedElement, func(element *domElement) bool { return element.ResponsiveImage }),
+			NaturalWidth:    intValue(matchedElement, func(element *domElement) int { return element.NaturalWidth }),
+			NaturalHeight:   intValue(matchedElement, func(element *domElement) int { return element.NaturalHeight }),
+			VisibleRatio:    floatValue(matchedElement, func(element *domElement) float64 { return element.VisibleRatio }),
 			SelectorHint:    stringValue(matchedElement, func(element *domElement) string { return element.SelectorHint }),
 		})
 		box := enriched[len(enriched)-1].BoundingBox
@@ -489,7 +503,7 @@ func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]
 		warnings = append(warnings, "Some visual anchors are below the captured range.")
 	}
 
-	return enriched, performanceMetrics, screenshot, warnings, nil
+	return enriched, performanceMetrics, screenshot, normalizeSiteProfile(snapshot.SiteProfile), warnings, nil
 }
 
 func (s *Service) launchBrowser(hostname, resolvedIP string) (string, func(), error) {
@@ -847,10 +861,12 @@ func sleepWithContext(ctx context.Context, wait time.Duration) error {
 	}
 }
 
-func collectElementBoxes(page *rod.Page) ([]domElement, error) {
+func collectDOMSnapshot(page *rod.Page) (domSnapshot, error) {
 	result, err := page.Evaluate(rod.Eval(`() => {
+		const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 		const seen = new Map();
 		const selectors = ["img", "video", "iframe", "source"];
+		const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
 		const selectorHint = (node) => {
 			if (!node || !node.tagName) return "";
 			if (node.id) return "#" + node.id;
@@ -858,18 +874,76 @@ func collectElementBoxes(page *rod.Page) ([]domElement, error) {
 			if (className) return node.tagName.toLowerCase() + "." + className;
 			return node.tagName.toLowerCase();
 		};
+		const hasResponsiveMarkup = (node, tagName) => {
+			if (!node) return false;
+			if (node.getAttribute("srcset") || node.getAttribute("sizes")) return true;
+			if (tagName === "img" && typeof node.closest === "function") {
+				const picture = node.closest("picture");
+				if (picture && picture.querySelector('source[srcset], source[sizes]')) {
+					return true;
+				}
+			}
+			return false;
+		};
+		const siteProfile = {
+			framework_hint: "generic",
+			evidence: []
+		};
+		const pushEvidence = (value) => {
+			if (!value || siteProfile.evidence.includes(value) || siteProfile.evidence.length >= 4) return;
+			siteProfile.evidence.push(value);
+		};
+		if (document.querySelector("astro-island")) {
+			siteProfile.framework_hint = "astro";
+			pushEvidence("Se detectaron nodos astro-island.");
+		}
+		if (document.querySelector('script[src*="/_astro/"],link[href*="/_astro/"]')) {
+			siteProfile.framework_hint = "astro";
+			pushEvidence("Se detectaron assets servidos desde /_astro/.");
+		}
+		if (siteProfile.framework_hint === "generic" && document.getElementById("__NEXT_DATA__")) {
+			siteProfile.framework_hint = "nextjs";
+			pushEvidence("Se detectó __NEXT_DATA__.");
+		}
+		if (siteProfile.framework_hint === "generic" && document.querySelector('script[src*="/_next/"],link[href*="/_next/"]')) {
+			siteProfile.framework_hint = "nextjs";
+			pushEvidence("Se detectaron assets servidos desde /_next/.");
+		}
+		if (siteProfile.evidence.length === 0) {
+			if (document.body) {
+				pushEvidence("No se detectaron marcadores claros de framework; se usa perfil genérico.");
+			} else {
+				siteProfile.framework_hint = "unknown";
+				pushEvidence("No se pudo inspeccionar el DOM renderizado.");
+			}
+		}
 		for (const selector of selectors) {
 			for (const node of document.querySelectorAll(selector)) {
 				const rect = node.getBoundingClientRect();
 				const url = node.currentSrc || node.src || node.getAttribute("src") || "";
 				if (!url || rect.width <= 0 || rect.height <= 0) continue;
+				let naturalWidth = 0;
+				let naturalHeight = 0;
+				const tagName = (node.tagName || "").toLowerCase();
+				if (tagName === "img") {
+					naturalWidth = node.naturalWidth || 0;
+					naturalHeight = node.naturalHeight || 0;
+				} else if (tagName === "video") {
+					naturalWidth = node.videoWidth || 0;
+					naturalHeight = node.videoHeight || 0;
+				}
+				const visibleHeight = clamp(Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0), 0, rect.height);
+				const visibleRatio = rect.height > 0 ? Math.round((visibleHeight / rect.height) * 1000) / 1000 : 0;
 				if (!seen.has(url)) {
 					seen.set(url, {
 						url,
-						tag: (node.tagName || "").toLowerCase(),
+						tag: tagName,
 						loading: node.getAttribute("loading") || "",
 						fetch_priority: node.getAttribute("fetchpriority") || "",
-						responsive_image: Boolean(node.getAttribute("srcset") || node.getAttribute("sizes")),
+						responsive_image: hasResponsiveMarkup(node, tagName),
+						natural_width: naturalWidth,
+						natural_height: naturalHeight,
+						visible_ratio: visibleRatio,
 						selector_hint: selectorHint(node),
 						x: Math.round(rect.left + window.scrollX),
 						y: Math.round(rect.top + window.scrollY),
@@ -879,17 +953,20 @@ func collectElementBoxes(page *rod.Page) ([]domElement, error) {
 				}
 			}
 		}
-		return JSON.stringify(Array.from(seen.values()));
+		return JSON.stringify({
+			elements: Array.from(seen.values()),
+			site_profile: siteProfile
+		});
 	}`))
 	if err != nil {
-		return nil, err
+		return domSnapshot{}, err
 	}
 
-	var boxes []domElement
-	if err := json.Unmarshal([]byte(result.Value.Str()), &boxes); err != nil {
-		return nil, err
+	var snapshot domSnapshot
+	if err := json.Unmarshal([]byte(result.Value.Str()), &snapshot); err != nil {
+		return domSnapshot{}, err
 	}
-	return boxes, nil
+	return snapshot, nil
 }
 
 func matchDOMElement(resourceURL string, elements []domElement) *domElement {
@@ -919,6 +996,32 @@ func stripURLNoise(value string) string {
 
 func intPtr(value int) *int {
 	return &value
+}
+
+func intValue[T any](value *T, getter func(*T) int) int {
+	if value == nil {
+		return 0
+	}
+	return getter(value)
+}
+
+func floatValue[T any](value *T, getter func(*T) float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return getter(value)
+}
+
+func normalizeSiteProfile(profile SiteProfile) SiteProfile {
+	switch profile.FrameworkHint {
+	case "astro", "nextjs", "generic", "unknown":
+	default:
+		profile.FrameworkHint = "generic"
+	}
+	if len(profile.Evidence) == 0 {
+		profile.Evidence = []string{"No se detectaron marcadores claros de framework; se usa perfil genérico."}
+	}
+	return profile
 }
 
 func encodeScreenshotBytes(data []byte) string {
@@ -970,6 +1073,9 @@ func makeInsightResources(resources []ResourceSummary) []insights.ResourceContex
 			LoadingAttr:           resource.LoadingAttr,
 			FetchPriority:         resource.FetchPriority,
 			ResponsiveImage:       resource.ResponsiveImage,
+			NaturalWidth:          resource.NaturalWidth,
+			NaturalHeight:         resource.NaturalHeight,
+			VisibleRatio:          resource.VisibleRatio,
 			IsThirdPartyTool:      resource.IsThirdPartyTool,
 			ThirdPartyKind:        resource.ThirdPartyKind,
 		})
@@ -1055,8 +1161,10 @@ func sanitizeTopActions(actions []insights.TopAction, findings []AnalysisFinding
 			}
 		}
 		if len(related) == 0 {
-			if fallback := fallbackTopActionResourceID(output[index].RelatedFindingID, vampires); fallback != "" {
-				related = []string{fallback}
+			if shouldFallbackTopActionResourceID(output[index].RelatedFindingID) {
+				if fallback := fallbackTopActionResourceID(output[index].RelatedFindingID, vampires); fallback != "" {
+					related = []string{fallback}
+				}
 			}
 		}
 		output[index].RelatedResourceIDs = related
@@ -1081,6 +1189,15 @@ func filterVisibleActionResourceIDs(ids []string, visibleIDs map[string]struct{}
 	return filtered
 }
 
+func shouldFallbackTopActionResourceID(findingID string) bool {
+	switch findingID {
+	case "responsive_image_overdelivery":
+		return false
+	default:
+		return true
+	}
+}
+
 func fallbackTopActionResourceID(findingID string, vampires []ResourceSummary) string {
 	for _, vampire := range vampires {
 		switch findingID {
@@ -1095,7 +1212,7 @@ func fallbackTopActionResourceID(findingID string, vampires []ResourceSummary) s
 			if vampire.VisualRole == visualRoleLCPCandidate || vampire.VisualRole == visualRoleHeroMedia || vampire.VisualRole == visualRoleAboveFoldMedia {
 				return vampire.ID
 			}
-		case "below_fold_gallery_waste":
+		case "repeated_gallery_overdelivery":
 			if vampire.VisualRole == visualRoleRepeatedCard || vampire.VisualRole == visualRoleBelowFoldMedia || vampire.Type == "image" {
 				return vampire.ID
 			}
@@ -1107,7 +1224,7 @@ func fallbackTopActionResourceID(findingID string, vampires []ResourceSummary) s
 			if vampire.Type == "font" {
 				return vampire.ID
 			}
-		case "main_thread_pressure":
+		case "main_thread_cpu_pressure":
 			if vampire.Type == "script" {
 				return vampire.ID
 			}

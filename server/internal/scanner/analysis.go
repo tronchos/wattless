@@ -123,11 +123,11 @@ func siteRoot(host string) string {
 	return root
 }
 
-func estimateSavingsBytes(resourceType string, bytes int64) int64 {
+func estimateSavingsBytes(resourceType, mimeType string, bytes int64) int64 {
 	factor := 0.15
 	switch resourceType {
 	case "image":
-		factor = 0.35
+		factor = baseImageSavingsFactor(mimeType)
 	case "video":
 		factor = 0.60
 	case "script":
@@ -142,10 +142,70 @@ func estimateSavingsBytes(resourceType string, bytes int64) int64 {
 	return int64(math.Round(float64(bytes) * factor))
 }
 
+func estimateResourceSavings(resource enrichedResource) int64 {
+	if resource.Type != "image" {
+		return estimateSavingsBytes(resource.Type, resource.MIMEType, resource.Bytes)
+	}
+
+	factor := imageSavingsFactor(resource)
+	return int64(math.Round(float64(resource.Bytes) * factor))
+}
+
+func baseImageSavingsFactor(mimeType string) float64 {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	switch {
+	case strings.Contains(mimeType, "svg"):
+		return 0
+	case strings.Contains(mimeType, "avif"):
+		return 0.10
+	case strings.Contains(mimeType, "webp"):
+		return 0.20
+	case strings.Contains(mimeType, "png"), strings.Contains(mimeType, "jpeg"), strings.Contains(mimeType, "jpg"):
+		return 0.35
+	default:
+		return 0.20
+	}
+}
+
+func imageSavingsFactor(resource enrichedResource) float64 {
+	factor := baseImageSavingsFactor(resource.MIMEType)
+	overdelivery := responsiveOverdeliveryFactor(resource)
+	if overdelivery > factor {
+		factor = overdelivery
+	}
+	if factor > 0.70 {
+		return 0.70
+	}
+	return factor
+}
+
+func responsiveOverdeliveryFactor(resource enrichedResource) float64 {
+	if resource.BoundingBox == nil || resource.NaturalWidth <= 0 || resource.NaturalHeight <= 0 {
+		return 0
+	}
+
+	renderedArea := resource.BoundingBox.Width * resource.BoundingBox.Height
+	if renderedArea <= 0 {
+		return 0
+	}
+
+	naturalArea := float64(resource.NaturalWidth * resource.NaturalHeight)
+	if naturalArea <= 0 {
+		return 0
+	}
+
+	idealArea := renderedArea * 4
+	if naturalArea <= idealArea {
+		return 0
+	}
+
+	return 1 - (idealArea / naturalArea)
+}
+
 func enrichResourcesForAnalysis(resources []enrichedResource, perf PerformanceMetrics, viewportWidth, viewportHeight int) ([]enrichedResource, []ResourceGroup) {
 	annotated := append([]enrichedResource(nil), resources...)
 	for index := range annotated {
-		annotated[index].PositionBand = classifyPositionBand(annotated[index].BoundingBox, viewportHeight)
+		annotated[index].PositionBand = classifyPositionBand(annotated[index].BoundingBox, annotated[index].VisibleRatio, viewportHeight)
 		annotated[index].ThirdPartyKind = classifyThirdPartyKind(annotated[index])
 		annotated[index].IsThirdPartyTool = annotated[index].Party == partyThird && annotated[index].ThirdPartyKind != thirdPartyUnknown
 	}
@@ -168,14 +228,22 @@ func enrichResourcesForAnalysis(resources []enrichedResource, perf PerformanceMe
 	return annotated, groups
 }
 
-func classifyPositionBand(box *BoundingBox, viewportHeight int) string {
-	if box == nil || viewportHeight <= 0 {
+func classifyPositionBand(box *BoundingBox, visibleRatio float64, viewportHeight int) string {
+	if box == nil || viewportHeight <= 0 || box.Height <= 0 {
 		return positionUnknown
 	}
+
+	top := box.Y
+	bottom := box.Y + box.Height
+	secondViewportTop := float64(viewportHeight)
+	secondViewportBottom := float64(viewportHeight * 2)
+
 	switch {
-	case box.Y < float64(viewportHeight):
+	case visibleRatio >= 0.50:
 		return positionAboveFold
-	case box.Y < float64(viewportHeight*2):
+	case visibleRatio > 0:
+		return positionNearFold
+	case top < secondViewportBottom && bottom > secondViewportTop:
 		return positionNearFold
 	default:
 		return positionBelowFold
@@ -231,16 +299,16 @@ func classifyVisualRole(resource enrichedResource, perf PerformanceMetrics, view
 	area := resource.BoundingBox.Width * resource.BoundingBox.Height
 	viewportArea := float64(maxInt(viewportWidth, 1) * maxInt(viewportHeight, 1))
 
+	if resource.Type == "image" {
+		if _, ok := repeatedGalleryMembers[resource.ID]; ok {
+			return visualRoleRepeatedCard
+		}
+	}
+
 	if resource.PositionBand == positionAboveFold &&
 		resource.BoundingBox.Width >= float64(viewportWidth)*0.40 &&
 		area >= viewportArea*0.20 {
 		return visualRoleHeroMedia
-	}
-
-	if resource.Type == "image" && (resource.PositionBand == positionNearFold || resource.PositionBand == positionBelowFold) {
-		if _, ok := repeatedGalleryMembers[resource.ID]; ok {
-			return visualRoleRepeatedCard
-		}
 	}
 
 	if resource.PositionBand == positionAboveFold {
@@ -382,7 +450,11 @@ func sanitizeGroupID(value string) string {
 func repeatedGalleryLabel(resources []enrichedResource, viewportHeight int) string {
 	belowFold := 0
 	for _, resource := range resources {
-		if classifyPositionBand(resource.BoundingBox, viewportHeight) == positionBelowFold {
+		band := resource.PositionBand
+		if band == "" {
+			band = classifyPositionBand(resource.BoundingBox, resource.VisibleRatio, viewportHeight)
+		}
+		if band == positionBelowFold {
 			belowFold++
 		}
 	}
@@ -514,6 +586,9 @@ func buildAnalysis(resources []enrichedResource, perf PerformanceMetrics, groups
 	if finding := buildFontFinding(resources, summary); finding != nil {
 		findings = append(findings, *finding)
 	}
+	if finding := buildResponsiveImageFinding(resources, groups, summary.LCPResourceID); finding != nil {
+		findings = append(findings, *finding)
+	}
 	if finding := buildHeavyAboveFoldFinding(resources, perf, summary.LCPResourceID); finding != nil {
 		findings = append(findings, *finding)
 	}
@@ -564,7 +639,7 @@ func buildLCPFinding(resources []enrichedResource, resource *enrichedResource, p
 			Title:                 "Ataca el recurso que domina el LCP",
 			Summary:               fmt.Sprintf("La carga crítica está anclada a un recurso de %s. Es el mejor punto de ataque para recortar el render inicial sin tocar el resto del documento.", humanBytes(resource.Bytes)),
 			Evidence:              evidence,
-			EstimatedSavingsBytes: estimateSavingsBytes(resource.Type, resource.Bytes),
+			EstimatedSavingsBytes: estimateResourceSavings(*resource),
 			RelatedResourceIDs:    []string{resource.ID},
 		}
 	}
@@ -617,6 +692,10 @@ func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedRes
 		return nil
 	}
 
+	members := resourcesForIDs(resources, candidate.RelatedResourceIDs)
+	missingResponsive := countNonResponsiveImages(members)
+	medianRatio := medianNaturalToRenderedRatio(members)
+
 	title := "Comprime la galería repetida del catálogo"
 	summary := fmt.Sprintf("%s suma %s. No todo este bloque es crítico para el viewport inicial, pero sí infla el coste por visita y multiplica el peso del catálogo visual.", candidate.Label, humanBytes(candidate.TotalBytes))
 
@@ -630,7 +709,7 @@ func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedRes
 	}
 
 	return &AnalysisFinding{
-		ID:         "below_fold_gallery_waste",
+		ID:         "repeated_gallery_overdelivery",
 		Category:   "media",
 		Severity:   "medium",
 		Confidence: "high",
@@ -640,6 +719,8 @@ func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedRes
 			fmt.Sprintf("Grupo detectado: %s.", candidate.Label),
 			fmt.Sprintf("Transferencia agregada: %s en %d recursos.", humanBytes(candidate.TotalBytes), candidate.ResourceCount),
 			fmt.Sprintf("Posición dominante: %s.", strings.ReplaceAll(candidate.PositionBand, "_", " ")),
+			fmt.Sprintf("Imágenes sin srcset/sizes: %d de %d.", missingResponsive, len(members)),
+			fmt.Sprintf("Mediana natural/rendered: %s.", humanRatio(medianRatio)),
 		},
 		EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, candidate.RelatedResourceIDs),
 		RelatedResourceIDs:    append([]string(nil), candidate.RelatedResourceIDs...),
@@ -761,8 +842,8 @@ func buildMainThreadFinding(resources []enrichedResource, perf PerformanceMetric
 	})
 
 	return &AnalysisFinding{
-		ID:         "main_thread_pressure",
-		Category:   "network",
+		ID:         "main_thread_cpu_pressure",
+		Category:   "cpu",
 		Severity:   severity,
 		Confidence: "high",
 		Title:      "Reduce la presión real sobre la hebra principal",
@@ -774,6 +855,65 @@ func buildMainThreadFinding(resources []enrichedResource, perf PerformanceMetric
 		},
 		EstimatedSavingsBytes: sumEstimatedSavings(scripts),
 		RelatedResourceIDs:    collectTopResourceIDs(scripts, 3),
+	}
+}
+
+func buildResponsiveImageFinding(resources []enrichedResource, groups []ResourceGroup, lcpResourceID string) *AnalysisFinding {
+	repeatedGalleryMembers := collectRepeatedGalleryMembers(groups)
+	var candidate *enrichedResource
+	for index := range resources {
+		resource := &resources[index]
+		if resource.Type != "image" || resource.ID == lcpResourceID {
+			continue
+		}
+		if _, ok := repeatedGalleryMembers[resource.ID]; ok {
+			continue
+		}
+		ratio := naturalToRenderedRatio(*resource)
+		overdelivery := responsiveOverdeliveryFactor(*resource)
+		savings := estimateResourceSavings(*resource)
+		if savings < 60_000 {
+			continue
+		}
+		if overdelivery < 0.15 && !(ratio >= 1.5 && !resource.ResponsiveImage) {
+			continue
+		}
+		if candidate == nil || savings > estimateResourceSavings(*candidate) {
+			candidate = resource
+		}
+	}
+	if candidate == nil {
+		return nil
+	}
+
+	confidence := "medium"
+	if candidate.NaturalWidth > 0 && candidate.NaturalHeight > 0 {
+		confidence = "high"
+	}
+
+	title := "Corrige la sobreentrega de una imagen"
+	summary := "Esta imagen se sirve bastante más grande de lo que exige su caja renderizada. Ajustar variantes, srcset/sizes o tamaño de salida puede recortar bytes sin sacrificar nitidez visible."
+	if candidate.ResponsiveImage {
+		summary = "Aunque ya se detectan variantes responsive, la imagen elegida sigue siendo bastante más grande de lo que exige su caja renderizada. Conviene ajustar sizes, breakpoints o tamaños de salida."
+	} else {
+		summary = "Esta imagen se sirve bastante más grande de lo que exige su caja renderizada y no se detectan variantes responsive claras. Ajustar variantes, srcset/sizes o tamaño de salida puede recortar bytes sin sacrificar nitidez visible."
+	}
+
+	return &AnalysisFinding{
+		ID:         "responsive_image_overdelivery",
+		Category:   "media",
+		Severity:   "medium",
+		Confidence: confidence,
+		Title:      title,
+		Summary:    summary,
+		Evidence: []string{
+			fmt.Sprintf("Transfiere %s.", humanBytes(candidate.Bytes)),
+			fmt.Sprintf("Tamaño natural: %dx%d para una caja aproximada de %.0fx%.0f.", candidate.NaturalWidth, candidate.NaturalHeight, candidate.BoundingBox.Width, candidate.BoundingBox.Height),
+			fmt.Sprintf("Ratio natural/rendered: %s.", humanRatio(naturalToRenderedRatio(*candidate))),
+			fmt.Sprintf("Responsive imaging detectado: %t.", candidate.ResponsiveImage),
+		},
+		EstimatedSavingsBytes: estimateResourceSavings(*candidate),
+		RelatedResourceIDs:    []string{candidate.ID},
 	}
 }
 
@@ -814,7 +954,7 @@ func buildHeavyAboveFoldFinding(resources []enrichedResource, perf PerformanceMe
 			fmt.Sprintf("Recurso above the fold: %s.", humanBytes(candidate.Bytes)),
 			fmt.Sprintf("Rol visual detectado: %s.", strings.ReplaceAll(candidate.VisualRole, "_", " ")),
 		},
-		EstimatedSavingsBytes: estimateSavingsBytes(candidate.Type, candidate.Bytes),
+		EstimatedSavingsBytes: estimateResourceSavings(*candidate),
 		RelatedResourceIDs:    []string{candidate.ID},
 	}
 }
@@ -898,8 +1038,8 @@ func rankVampireResources(resources []enrichedResource, totalBytes int64) ([]enr
 		leftPriority := vampirePriority(candidates[i])
 		rightPriority := vampirePriority(candidates[j])
 		if leftPriority == rightPriority {
-			leftSavings := estimateSavingsBytes(candidates[i].Type, candidates[i].Bytes)
-			rightSavings := estimateSavingsBytes(candidates[j].Type, candidates[j].Bytes)
+			leftSavings := estimateResourceSavings(candidates[i])
+			rightSavings := estimateResourceSavings(candidates[j])
 			if leftSavings == rightSavings {
 				if candidates[i].Bytes == candidates[j].Bytes {
 					return candidates[i].ID < candidates[j].ID
@@ -1008,7 +1148,7 @@ func sumBytes(resources []enrichedResource) int64 {
 func sumEstimatedSavings(resources []enrichedResource) int64 {
 	var total int64
 	for _, resource := range resources {
-		total += estimateSavingsBytes(resource.Type, resource.Bytes)
+		total += estimateResourceSavings(resource)
 	}
 	return total
 }
@@ -1024,7 +1164,7 @@ func sumEstimatedSavingsForIDs(resources []enrichedResource, ids []string) int64
 	var total int64
 	for _, resource := range resources {
 		if _, ok := lookup[resource.ID]; ok {
-			total += estimateSavingsBytes(resource.Type, resource.Bytes)
+			total += estimateResourceSavings(resource)
 		}
 	}
 	return total
@@ -1082,4 +1222,85 @@ func humanBytes(bytes int64) string {
 		precision = 0
 	}
 	return fmt.Sprintf("%.*f %s", precision, value, units[unitIndex])
+}
+
+func resourcesForIDs(resources []enrichedResource, ids []string) []enrichedResource {
+	if len(ids) == 0 {
+		return nil
+	}
+	lookup := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		lookup[id] = struct{}{}
+	}
+	selected := make([]enrichedResource, 0, len(ids))
+	for _, resource := range resources {
+		if _, ok := lookup[resource.ID]; ok {
+			selected = append(selected, resource)
+		}
+	}
+	return selected
+}
+
+func collectRepeatedGalleryMembers(groups []ResourceGroup) map[string]struct{} {
+	output := make(map[string]struct{})
+	for _, group := range groups {
+		if group.Kind != groupKindRepeatedGallery {
+			continue
+		}
+		for _, resourceID := range group.RelatedResourceIDs {
+			output[resourceID] = struct{}{}
+		}
+	}
+	return output
+}
+
+func countNonResponsiveImages(resources []enrichedResource) int {
+	total := 0
+	for _, resource := range resources {
+		if resource.Type == "image" && !resource.ResponsiveImage {
+			total++
+		}
+	}
+	return total
+}
+
+func naturalToRenderedRatio(resource enrichedResource) float64 {
+	if resource.BoundingBox == nil || resource.BoundingBox.Width <= 0 || resource.BoundingBox.Height <= 0 {
+		return 0
+	}
+	widthRatio := 0.0
+	heightRatio := 0.0
+	if resource.NaturalWidth > 0 {
+		widthRatio = float64(resource.NaturalWidth) / resource.BoundingBox.Width
+	}
+	if resource.NaturalHeight > 0 {
+		heightRatio = float64(resource.NaturalHeight) / resource.BoundingBox.Height
+	}
+	return math.Max(widthRatio, heightRatio)
+}
+
+func medianNaturalToRenderedRatio(resources []enrichedResource) float64 {
+	ratios := make([]float64, 0, len(resources))
+	for _, resource := range resources {
+		ratio := naturalToRenderedRatio(resource)
+		if ratio > 0 {
+			ratios = append(ratios, ratio)
+		}
+	}
+	if len(ratios) == 0 {
+		return 0
+	}
+	sort.Float64s(ratios)
+	middle := len(ratios) / 2
+	if len(ratios)%2 == 1 {
+		return ratios[middle]
+	}
+	return (ratios[middle-1] + ratios[middle]) / 2
+}
+
+func humanRatio(value float64) string {
+	if value <= 0 {
+		return "sin datos"
+	}
+	return fmt.Sprintf("%.1fx", value)
 }

@@ -54,7 +54,7 @@ Devuelve JSON estricto sin markdown con esta forma:
       "related_resource_ids": [string],
       "recommended_fix": {
         "summary": "Explicación breve de la corrección",
-        "optimized_code": "Código React/Next de ejemplo reemplazando el asset infractor",
+        "optimized_code": "Código de ejemplo adaptado al framework_hint del sitio",
         "changes": ["Cambio 1", "Cambio 2"],
         "expected_impact": "Impacto esperado"
       }
@@ -75,7 +75,7 @@ Devuelve JSON estricto sin markdown con esta forma:
       "evidence": [string],
       "recommended_fix": {
         "summary": "Explicación breve de la corrección",
-        "optimized_code": "Código React/Next de ejemplo",
+        "optimized_code": "Código de ejemplo adaptado al framework_hint del sitio",
         "changes": ["Cambio 1", "Cambio 2"],
         "expected_impact": "Impacto esperado"
       }
@@ -102,7 +102,11 @@ Reglas:
 - Usa el campo confidence para no sobreafirmar.
 - No interpretes script_resource_duration_ms como bloqueo real; usa long_tasks_total_ms para hablar de presión de CPU.
 - El campo 'recommended_fix' debe incluirse obligatoriamente en al menos la primera top action (el cuello de botella crítico).
-- En 'optimized_code', produce un snippet nativo de código (preferible React/NextJS) ilustrando la solución sin bloques markdown y asumiendo que el asset problemático se usará ahí (ej: si falla img.png, escribe <Image src="img.png"... />). Mantenlo limpio y profesional.
+- Usa report.site_profile.framework_hint para elegir el estilo del snippet:
+  - nextjs => React/Next
+  - astro => Astro o HTML compatible con Astro
+  - generic/unknown => HTML o JS vanilla
+- En 'optimized_code', produce un snippet nativo de código ilustrando la solución sin bloques markdown y asumiendo que el asset problemático se usará ahí. No uses componentes de Next si framework_hint no es nextjs.
 
 Contexto:
 %s`, mustJSON(report))

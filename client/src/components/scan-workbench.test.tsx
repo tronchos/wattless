@@ -202,9 +202,9 @@ describe("ScanWorkbench", () => {
 });
 
 function hasDuplicateKeyWarning(spy: ReturnType<typeof vi.spyOn>): boolean {
-  return spy.mock.calls.some((args) =>
+  return spy.mock.calls.some((args: unknown[]) =>
     args.some(
-      (arg) =>
+      (arg: unknown) =>
         typeof arg === "string" &&
         arg.includes("Each child in a list should have a unique"),
     ),

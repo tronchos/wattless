@@ -10,13 +10,13 @@ func TestSanitizeTopActionsFallsBackToVisibleVampire(t *testing.T) {
 	actions := []insights.TopAction{
 		{
 			ID:                 "act-1",
-			RelatedFindingID:   "below_fold_gallery_waste",
+			RelatedFindingID:   "repeated_gallery_overdelivery",
 			RelatedResourceIDs: []string{"missing-1", "missing-2"},
 		},
 	}
 	findings := []AnalysisFinding{
 		{
-			ID:                 "below_fold_gallery_waste",
+			ID:                 "repeated_gallery_overdelivery",
 			RelatedResourceIDs: []string{"missing-1", "missing-2"},
 		},
 	}
@@ -46,6 +46,38 @@ func TestSanitizeTopActionsFallsBackToVisibleVampire(t *testing.T) {
 	}
 }
 
+func TestSanitizeTopActionsKeepsResponsiveImageActionUnboundWithoutVisibleMatch(t *testing.T) {
+	actions := []insights.TopAction{
+		{
+			ID:                 "act-1",
+			RelatedFindingID:   "responsive_image_overdelivery",
+			RelatedResourceIDs: []string{"missing-image"},
+		},
+	}
+	findings := []AnalysisFinding{
+		{
+			ID:                 "responsive_image_overdelivery",
+			RelatedResourceIDs: []string{"missing-image"},
+		},
+	}
+	vampires := []ResourceSummary{
+		{
+			ID:            "visible-image",
+			Type:          "image",
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+		},
+	}
+
+	sanitized := sanitizeTopActions(actions, findings, vampires)
+	if len(sanitized) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(sanitized))
+	}
+	if len(sanitized[0].RelatedResourceIDs) != 0 {
+		t.Fatalf("expected responsive finding to stay unbound without exact visible match, got %#v", sanitized[0].RelatedResourceIDs)
+	}
+}
+
 func TestAttachAssetInsightsIgnoresInvalidDraftsAndFallsBackPerAsset(t *testing.T) {
 	vampires := []ResourceSummary{
 		{
@@ -71,7 +103,7 @@ func TestAttachAssetInsightsIgnoresInvalidDraftsAndFallsBackPerAsset(t *testing.
 	analysis := Analysis{
 		Findings: []AnalysisFinding{
 			{
-				ID:                    "below_fold_gallery_waste",
+				ID:                    "repeated_gallery_overdelivery",
 				Category:              "media",
 				Severity:              "medium",
 				Confidence:            "high",
@@ -86,7 +118,7 @@ func TestAttachAssetInsightsIgnoresInvalidDraftsAndFallsBackPerAsset(t *testing.
 	actions := []insights.TopAction{
 		{
 			ID:                 "act-1",
-			RelatedFindingID:   "below_fold_gallery_waste",
+			RelatedFindingID:   "repeated_gallery_overdelivery",
 			RelatedResourceIDs: []string{"visible-card"},
 			Reason:             "Optimiza el grid repetido con miniaturas más pequeñas.",
 			Confidence:         "high",

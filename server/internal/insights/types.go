@@ -19,8 +19,16 @@ type ResourceContext struct {
 	LoadingAttr           string  `json:"loading_attr,omitempty"`
 	FetchPriority         string  `json:"fetch_priority,omitempty"`
 	ResponsiveImage       bool    `json:"responsive_image,omitempty"`
+	NaturalWidth          int     `json:"natural_width,omitempty"`
+	NaturalHeight         int     `json:"natural_height,omitempty"`
+	VisibleRatio          float64 `json:"visible_ratio,omitempty"`
 	IsThirdPartyTool      bool    `json:"is_third_party_tool,omitempty"`
 	ThirdPartyKind        string  `json:"third_party_kind,omitempty"`
+}
+
+type SiteProfileContext struct {
+	FrameworkHint string   `json:"framework_hint"`
+	Evidence      []string `json:"evidence"`
 }
 
 type PerformanceContext struct {
@@ -98,6 +106,7 @@ type ReportContext struct {
 	HostingIsGreen        bool               `json:"hosting_is_green"`
 	HostingVerdict        string             `json:"hosting_verdict"`
 	HostedBy              string             `json:"hosted_by"`
+	SiteProfile           SiteProfileContext `json:"site_profile"`
 	Performance           PerformanceContext `json:"performance"`
 	Summary               SummaryContext     `json:"summary"`
 	Analysis              AnalysisContext    `json:"analysis"`
@@ -125,19 +134,19 @@ type TopAction struct {
 }
 
 type AssetInsightDraft struct {
-	ResourceID        string           `json:"resource_id"`
-	Title             string           `json:"title"`
-	ShortProblem      string           `json:"short_problem"`
-	WhyItMatters      string           `json:"why_it_matters"`
-	RecommendedAction string           `json:"recommended_action"`
-	Confidence        string           `json:"confidence"`
-	LikelyLCPImpact   string           `json:"likely_lcp_impact"`
-	RelatedFindingID  string           `json:"related_finding_id,omitempty"`
-	RelatedActionID   string           `json:"related_action_id,omitempty"`
-	Evidence          []string         `json:"evidence"`
-	RecommendedFix    *RecommendedFix  `json:"recommended_fix,omitempty"`
-	Scope             string           `json:"scope"`
-	Source            string           `json:"source"`
+	ResourceID        string          `json:"resource_id"`
+	Title             string          `json:"title"`
+	ShortProblem      string          `json:"short_problem"`
+	WhyItMatters      string          `json:"why_it_matters"`
+	RecommendedAction string          `json:"recommended_action"`
+	Confidence        string          `json:"confidence"`
+	LikelyLCPImpact   string          `json:"likely_lcp_impact"`
+	RelatedFindingID  string          `json:"related_finding_id,omitempty"`
+	RelatedActionID   string          `json:"related_action_id,omitempty"`
+	Evidence          []string        `json:"evidence"`
+	RecommendedFix    *RecommendedFix `json:"recommended_fix,omitempty"`
+	Scope             string          `json:"scope"`
+	Source            string          `json:"source"`
 }
 
 type ScanInsights struct {

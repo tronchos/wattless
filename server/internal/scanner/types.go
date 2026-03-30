@@ -9,6 +9,11 @@ type BoundingBox struct {
 	Height float64 `json:"height"`
 }
 
+type SiteProfile struct {
+	FrameworkHint string   `json:"framework_hint"`
+	Evidence      []string `json:"evidence"`
+}
+
 type ResourceSummary struct {
 	ID                    string       `json:"id"`
 	URL                   string       `json:"url"`
@@ -28,6 +33,9 @@ type ResourceSummary struct {
 	LoadingAttr           string       `json:"loading_attr"`
 	FetchPriority         string       `json:"fetch_priority"`
 	ResponsiveImage       bool         `json:"responsive_image"`
+	NaturalWidth          int          `json:"natural_width,omitempty"`
+	NaturalHeight         int          `json:"natural_height,omitempty"`
+	VisibleRatio          float64      `json:"visible_ratio,omitempty"`
 	IsThirdPartyTool      bool         `json:"is_third_party_tool"`
 	ThirdPartyKind        string       `json:"third_party_kind"`
 	AssetInsight          AssetInsight `json:"asset_insight"`
@@ -165,6 +173,7 @@ type Report struct {
 	HostingIsGreen        bool                  `json:"hosting_is_green"`
 	HostingVerdict        string                `json:"hosting_verdict"`
 	HostedBy              string                `json:"hosted_by"`
+	SiteProfile           SiteProfile           `json:"site_profile"`
 	Summary               Summary               `json:"summary"`
 	BreakdownByType       []ResourceBreakdown   `json:"breakdown_by_type"`
 	BreakdownByParty      []ResourceBreakdown   `json:"breakdown_by_party"`
@@ -195,9 +204,17 @@ type domElement struct {
 	LoadingAttr     string  `json:"loading"`
 	FetchPriority   string  `json:"fetch_priority"`
 	ResponsiveImage bool    `json:"responsive_image"`
+	NaturalWidth    int     `json:"natural_width"`
+	NaturalHeight   int     `json:"natural_height"`
+	VisibleRatio    float64 `json:"visible_ratio"`
 	SelectorHint    string  `json:"selector_hint"`
 	X               float64 `json:"x"`
 	Y               float64 `json:"y"`
 	Width           float64 `json:"width"`
 	Height          float64 `json:"height"`
+}
+
+type domSnapshot struct {
+	Elements    []domElement `json:"elements"`
+	SiteProfile SiteProfile  `json:"site_profile"`
 }

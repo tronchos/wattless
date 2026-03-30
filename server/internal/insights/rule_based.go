@@ -62,7 +62,7 @@ func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report Repo
 		}
 
 		if index == 0 && (finding.Confidence == "high" || finding.Confidence == "medium") {
-			action.RecommendedFix = recommendedFixForFinding(finding)
+			action.RecommendedFix = recommendedFixForFinding(report, finding)
 		}
 
 		actions = append(actions, action)
@@ -170,10 +170,12 @@ func findingImpact(finding AnalysisFindingContext) string {
 			return "high"
 		}
 		return "medium"
-	case "main_thread_pressure":
+	case "main_thread_cpu_pressure":
 		if finding.Severity == "high" {
 			return "high"
 		}
+		return "medium"
+	case "responsive_image_overdelivery":
 		return "medium"
 	case "heavy_above_fold_media":
 		return "medium"
@@ -182,26 +184,13 @@ func findingImpact(finding AnalysisFindingContext) string {
 	}
 }
 
-func recommendedFixForFinding(finding AnalysisFindingContext) *RecommendedFix {
+func recommendedFixForFinding(report ReportContext, finding AnalysisFindingContext) *RecommendedFix {
+	framework := normalizedFrameworkHint(report.SiteProfile.FrameworkHint)
 	switch finding.ID {
 	case "render_lcp_candidate", "heavy_above_fold_media":
 		return &RecommendedFix{
-			Summary: "Plantilla base para reducir el peso del media crítico y ajustar prioridad de carga sin romper el layout.",
-			OptimizedCode: `import Image from "next/image";
-
-export function HeroAsset() {
-  return (
-    <Image
-      src="/asset-critico.webp"
-      alt="Asset crítico"
-      width={1280}
-      height={720}
-      priority
-      sizes="100vw"
-      quality={72}
-    />
-  );
-}`,
+			Summary:       "Plantilla base para reducir el peso del media crítico y ajustar prioridad de carga sin romper el layout.",
+			OptimizedCode: heroMediaOptimizedCode(framework),
 			Changes: []string{
 				"Dimensiones explícitas para evitar trabajo extra de layout",
 				"Calidad controlada y formato moderno para bajar bytes",
@@ -211,22 +200,8 @@ export function HeroAsset() {
 		}
 	case "render_lcp_dom_node":
 		return &RecommendedFix{
-			Summary: "Punto de partida para un LCP textual: fuente disciplinada, CSS estable y menos trabajo bloqueante en el primer render.",
-			OptimizedCode: `import { Inter } from "next/font/google";
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  preload: true,
-});
-
-export function HeroCopy() {
-  return (
-    <section>
-      <h1 className={inter.className}>Contenido crítico listo para pintar</h1>
-    </section>
-  );
-}`,
+			Summary:       "Punto de partida para un LCP textual: fuente disciplinada, CSS estable y menos trabajo bloqueante en el primer render.",
+			OptimizedCode: textLCPOtimizedCode(framework),
 			Changes: []string{
 				"Se reduce incertidumbre tipográfica en el nodo que domina el LCP",
 				"Se favorece una pintura estable sin depender de un asset visual pesado",
@@ -234,45 +209,21 @@ export function HeroCopy() {
 			},
 			ExpectedImpact: "Menos espera en el nodo textual que domina el render inicial.",
 		}
-	case "below_fold_gallery_waste":
+	case "repeated_gallery_overdelivery":
 		return &RecommendedFix{
-			Summary: "Patrón para listas visuales repetidas del catálogo: versiones más pequeñas y carga diferida por defecto.",
-			OptimizedCode: `import Image from "next/image";
-
-export function CourseCard({ course }) {
-  return (
-    <article>
-      <Image
-        src={course.cover}
-        alt={course.title}
-        width={480}
-        height={270}
-        loading="lazy"
-        sizes="(max-width: 768px) 100vw, 33vw"
-      />
-    </article>
-  );
-}`,
+			Summary:       "Patrón para listas visuales repetidas del catálogo: primeras tarjetas visibles con prioridad y el resto con variantes pequeñas y carga diferida.",
+			OptimizedCode: repeatedGalleryOptimizedCode(framework),
 			Changes: []string{
-				"Lazy loading explícito para el grid repetido no crítico",
-				"Tamaño realista para miniaturas y tarjetas",
-				"Responsive sizes para no servir desktop en móvil",
+				"Eager y prioridad solo para la primera fila visible",
+				"Variantes pequeñas y sizes realistas para cada tarjeta",
+				"Lazy loading para el resto del grid repetido",
 			},
 			ExpectedImpact: "Menor coste por visita sin tocar el primer render.",
 		}
 	case "third_party_analytics_overhead":
 		return &RecommendedFix{
-			Summary: "Patrón conservador para retrasar tags de terceros y evitar que compitan con el arranque.",
-			OptimizedCode: `import Script from "next/script";
-
-export function DeferredAnalytics() {
-  return (
-    <Script
-      src="https://analytics.example.com/tag.js"
-      strategy="lazyOnload"
-    />
-  );
-}`,
+			Summary:       "Patrón conservador para retrasar tags de terceros y evitar que compitan con el arranque.",
+			OptimizedCode: deferredAnalyticsCode(framework),
 			Changes: []string{
 				"Se difiere el proveedor hasta que la página ya cargó",
 				"Se reduce ruido de red durante el render inicial",
@@ -294,23 +245,26 @@ export function DeferredAnalytics() {
 			},
 			ExpectedImpact: "Menos transferencia tipográfica y render inicial más estable.",
 		}
-	case "main_thread_pressure":
+	case "main_thread_cpu_pressure":
 		return &RecommendedFix{
-			Summary: "Ejemplo de importación diferida para bajar trabajo de CPU del arranque.",
-			OptimizedCode: `import dynamic from "next/dynamic";
-
-const HeavyWidget = dynamic(() => import("./heavy-widget"), {
-  ssr: false,
-});
-
-export function DeferredWidget() {
-  return <HeavyWidget />;
-}`,
+			Summary:       "Ejemplo de importación diferida para bajar trabajo de CPU del arranque.",
+			OptimizedCode: deferredCPUCode(framework),
 			Changes: []string{
 				"El código pesado deja de competir con la hebra principal al inicio",
 				"Se aísla JS costoso fuera del camino crítico",
 			},
 			ExpectedImpact: "Menos Long Tasks y mejor respuesta percibida.",
+		}
+	case "responsive_image_overdelivery":
+		return &RecommendedFix{
+			Summary:       "Sirve una imagen adaptada a su caja renderizada y declara variantes para no mandar desktop completo a cajas pequeñas.",
+			OptimizedCode: responsiveImageCode(framework),
+			Changes: []string{
+				"srcset/sizes o equivalente del framework para ajustar el tamaño real",
+				"Variantes pensadas para la caja visible y para pantallas 2x",
+				"Menos bytes sin perder nitidez perceptible",
+			},
+			ExpectedImpact: "Menos transferencia por imagen sin degradar la experiencia visual.",
 		}
 	default:
 		return nil
@@ -400,7 +354,7 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 	for index := range findings {
 		finding := &findings[index]
 		switch {
-		case asset.VisualRole == "repeated_card_media" && finding.ID == "below_fold_gallery_waste":
+		case asset.VisualRole == "repeated_card_media" && finding.ID == "repeated_gallery_overdelivery":
 			candidates = append(candidates, finding)
 		case asset.VisualRole == "lcp_candidate" && finding.ID == "render_lcp_candidate":
 			candidates = append(candidates, finding)
@@ -410,7 +364,7 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 			candidates = append(candidates, finding)
 		case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics" && finding.ID == "third_party_analytics_overhead":
 			candidates = append(candidates, finding)
-		case asset.Type == "script" && finding.ID == "main_thread_pressure":
+		case asset.Type == "script" && finding.ID == "main_thread_cpu_pressure":
 			candidates = append(candidates, finding)
 		}
 	}
@@ -465,6 +419,8 @@ func assetTitle(asset ResourceContext, finding *AnalysisFindingContext) string {
 		return "Candidato real al LCP"
 	case asset.VisualRole == "repeated_card_media":
 		return "Media repetida en el catálogo"
+	case asset.Type == "image" && !asset.ResponsiveImage && asset.NaturalWidth > 0:
+		return "Imagen sobredimensionada"
 	case asset.Type == "script":
 		return "Script con presión innecesaria"
 	default:
@@ -475,7 +431,7 @@ func assetTitle(asset ResourceContext, finding *AnalysisFindingContext) string {
 func assetShortProblem(asset ResourceContext, finding *AnalysisFindingContext) string {
 	if finding != nil && strings.TrimSpace(finding.Summary) != "" {
 		switch finding.ID {
-		case "below_fold_gallery_waste":
+		case "repeated_gallery_overdelivery":
 			switch asset.PositionBand {
 			case "below_fold":
 				return "Este asset forma parte de una galería repetida bajo el fold que acumula más peso del necesario."
@@ -492,8 +448,10 @@ func assetShortProblem(asset ResourceContext, finding *AnalysisFindingContext) s
 			return "Esta dependencia de analítica añade coste de red y variabilidad sin aportar al render inicial."
 		case "font_stack_overweight":
 			return "Este archivo forma parte de una pila tipográfica más pesada de lo necesario."
-		case "main_thread_pressure":
+		case "main_thread_cpu_pressure":
 			return "Este script participa en un arranque con presión real de CPU."
+		case "responsive_image_overdelivery":
+			return "Esta imagen se sirve más grande de lo que exige su caja visible."
 		case "render_lcp_dom_node":
 			return "El LCP observado es textual o del DOM; este asset se relaciona más con soporte que con media crítica."
 		}
@@ -525,7 +483,7 @@ func assetWhyItMatters(asset ResourceContext, finding *AnalysisFindingContext) s
 			return "Introduce variabilidad externa y compite con recursos propios durante la carga."
 		case "fonts":
 			return "La tipografía pesa en la carga inicial aunque el sitio no se vea lento a simple vista."
-		case "network":
+		case "cpu":
 			return "El coste no es solo de bytes: también se traduce en más trabajo y más incertidumbre en producción."
 		}
 	}
@@ -551,6 +509,12 @@ func assetEvidence(asset ResourceContext, finding *AnalysisFindingContext, actio
 	}
 	if asset.VisualRole != "" && asset.VisualRole != "unknown" {
 		evidence = append(evidence, fmt.Sprintf("Rol visual: %s.", strings.ReplaceAll(asset.VisualRole, "_", " ")))
+	}
+	if len(evidence) < 3 && asset.NaturalWidth > 0 && asset.NaturalHeight > 0 {
+		evidence = append(evidence, fmt.Sprintf("Tamaño natural: %dx%d.", asset.NaturalWidth, asset.NaturalHeight))
+	}
+	if len(evidence) < 3 && asset.VisibleRatio > 0 {
+		evidence = append(evidence, fmt.Sprintf("Visible en el primer viewport: %.1f%%.", asset.VisibleRatio*100))
 	}
 	if len(evidence) < 3 && finding != nil {
 		for _, item := range trimEvidence(finding.Evidence, 3) {
@@ -585,7 +549,7 @@ func inferAssetLCPImpact(asset ResourceContext, finding *AnalysisFindingContext,
 		switch finding.ID {
 		case "render_lcp_candidate":
 			return "high"
-		case "render_lcp_dom_node", "heavy_above_fold_media", "main_thread_pressure":
+		case "render_lcp_dom_node", "heavy_above_fold_media", "main_thread_cpu_pressure", "responsive_image_overdelivery":
 			return "medium"
 		}
 	}
@@ -616,5 +580,234 @@ func formatBytes(bytes int64) string {
 		return fmt.Sprintf("%.0f KB", float64(bytes)/1_000)
 	default:
 		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+func normalizedFrameworkHint(value string) string {
+	switch value {
+	case "astro", "nextjs", "generic", "unknown":
+		return value
+	default:
+		return "generic"
+	}
+}
+
+func heroMediaOptimizedCode(framework string) string {
+	switch framework {
+	case "astro":
+		return `---
+import { Image } from "astro:assets";
+import hero from "../assets/hero.webp";
+---
+
+<Image
+  src={hero}
+  alt="Asset crítico"
+  widths={[640, 960, 1280]}
+  sizes="100vw"
+  loading="eager"
+  fetchpriority="high"
+  format="avif"
+/>`
+	case "generic", "unknown":
+		return `<img
+  src="/asset-critico-1280.webp"
+  srcset="/asset-critico-640.webp 640w, /asset-critico-960.webp 960w, /asset-critico-1280.webp 1280w"
+  sizes="100vw"
+  width="1280"
+  height="720"
+  loading="eager"
+  fetchpriority="high"
+  alt="Asset crítico"
+/>`
+	default:
+		return `import Image from "next/image";
+
+export function HeroAsset() {
+  return (
+    <Image
+      src="/asset-critico.webp"
+      alt="Asset crítico"
+      width={1280}
+      height={720}
+      priority
+      sizes="100vw"
+      quality={72}
+    />
+  );
+}`
+	}
+}
+
+func textLCPOtimizedCode(framework string) string {
+	if framework == "nextjs" {
+		return `import { Inter } from "next/font/google";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  preload: true,
+});
+
+export function HeroCopy() {
+  return (
+    <section>
+      <h1 className={inter.className}>Contenido crítico listo para pintar</h1>
+    </section>
+  );
+}`
+	}
+
+	return `@font-face {
+  font-family: "Brand Sans";
+  src: url("/fonts/brand-sans-subset.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 400 700;
+}
+
+.hero-title {
+  font-family: "Brand Sans", system-ui, sans-serif;
+}`
+}
+
+func repeatedGalleryOptimizedCode(framework string) string {
+	switch framework {
+	case "astro":
+		return `---
+import { Image } from "astro:assets";
+const firstRowCount = Math.max(1, Astro.props.firstRowCount ?? 1);
+---
+
+{courses.map((course, index) => (
+  <Image
+    src={course.cover}
+    alt={course.title}
+    widths={[320, 480, 640]}
+    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+    loading={index < firstRowCount ? "eager" : "lazy"}
+    fetchpriority={index < firstRowCount ? "high" : "auto"}
+  />
+))}`
+	case "generic", "unknown":
+		return `function renderCourseGrid(courses, options) {
+  options = options || {};
+  const firstRowCount = Math.max(1, options.firstRowCount || 1);
+  return courses.map(function (course, index) {
+    const isVisibleRow = index < firstRowCount;
+    return '<img ' +
+      'src="' + course.cover480 + '" ' +
+      'srcset="' + course.cover320 + ' 320w, ' + course.cover480 + ' 480w, ' + course.cover640 + ' 640w" ' +
+      'sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" ' +
+      'width="480" height="270" ' +
+      'loading="' + (isVisibleRow ? "eager" : "lazy") + '" ' +
+      'fetchpriority="' + (isVisibleRow ? "high" : "auto") + '" ' +
+      'alt="' + course.title + '">' ;
+  }).join("");
+}`
+	default:
+		return `import Image from "next/image";
+
+export function CourseGrid({ courses, firstRowCount = 1 }) {
+  return courses.map((course, index) => (
+    <Image
+      key={course.slug}
+      src={course.cover}
+      alt={course.title}
+      width={480}
+      height={270}
+      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+      loading={index < firstRowCount ? "eager" : "lazy"}
+      fetchPriority={index < firstRowCount ? "high" : "auto"}
+    />
+  ));
+}`
+	}
+}
+
+func deferredAnalyticsCode(framework string) string {
+	if framework == "nextjs" {
+		return `import Script from "next/script";
+
+export function DeferredAnalytics() {
+  return (
+    <Script
+      src="https://analytics.example.com/tag.js"
+      strategy="lazyOnload"
+    />
+  );
+}`
+	}
+
+	return `<script>
+  window.addEventListener("load", () => {
+    requestIdleCallback(() => {
+      const script = document.createElement("script");
+      script.src = "https://analytics.example.com/tag.js";
+      script.async = true;
+      document.head.appendChild(script);
+    });
+  });
+</script>`
+}
+
+func deferredCPUCode(framework string) string {
+	if framework == "nextjs" {
+		return `import dynamic from "next/dynamic";
+
+const HeavyWidget = dynamic(() => import("./heavy-widget"), {
+  ssr: false,
+});
+
+export function DeferredWidget() {
+  return <HeavyWidget />;
+}`
+	}
+
+	return `<script type="module">
+  requestIdleCallback(async () => {
+    const { mountHeavyWidget } = await import("/scripts/heavy-widget.js");
+    mountHeavyWidget(document.querySelector("[data-heavy-widget]"));
+  });
+</script>`
+}
+
+func responsiveImageCode(framework string) string {
+	switch framework {
+	case "astro":
+		return `---
+import { Image } from "astro:assets";
+import cardCover from "../assets/card-cover.webp";
+---
+
+<Image
+  src={cardCover}
+  alt="Portada optimizada"
+  widths={[320, 480, 640]}
+  sizes="(max-width: 768px) 100vw, 480px"
+  loading="eager"
+/>`
+	case "generic", "unknown":
+		return `<img
+  src="/card-cover-480.webp"
+  srcset="/card-cover-320.webp 320w, /card-cover-480.webp 480w, /card-cover-640.webp 640w"
+  sizes="(max-width: 768px) 100vw, 480px"
+  width="480"
+  height="270"
+  alt="Portada optimizada"
+/>`
+	default:
+		return `import Image from "next/image";
+
+export function ResponsiveCardImage() {
+  return (
+    <Image
+      src="/card-cover.webp"
+      alt="Portada optimizada"
+      width={480}
+      height={270}
+      sizes="(max-width: 768px) 100vw, 480px"
+    />
+  );
+}`
 	}
 }

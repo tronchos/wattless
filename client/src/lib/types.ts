@@ -5,6 +5,11 @@ export interface BoundingBox {
   height: number;
 }
 
+export interface SiteProfile {
+  framework_hint: "astro" | "nextjs" | "generic" | "unknown";
+  evidence: string[];
+}
+
 export interface FixSuggestion {
   summary: string;
   optimized_code: string;
@@ -73,6 +78,9 @@ export interface VampireElement {
   loading_attr: string;
   fetch_priority: string;
   responsive_image: boolean;
+  natural_width?: number;
+  natural_height?: number;
+  visible_ratio?: number;
   is_third_party_tool: boolean;
   third_party_kind:
     | "analytics"
@@ -134,7 +142,7 @@ export interface AnalysisSummary {
 
 export interface AnalysisFinding {
   id: string;
-  category: "render" | "media" | "third_party" | "fonts" | "network";
+  category: "render" | "media" | "third_party" | "fonts" | "cpu";
   severity: "high" | "medium" | "low";
   confidence: "high" | "medium" | "low";
   title: string;
@@ -200,6 +208,7 @@ export interface ScanReport {
   hosting_is_green: boolean;
   hosting_verdict: "green" | "not_green" | "unknown";
   hosted_by: string;
+  site_profile: SiteProfile;
   summary: Summary;
   breakdown_by_type: ResourceBreakdown[];
   breakdown_by_party: ResourceBreakdown[];

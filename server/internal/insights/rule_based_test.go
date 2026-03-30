@@ -68,7 +68,7 @@ func TestBuildRuleBasedAssetInsightAvoidsBelowFoldClaimForMixedGalleryAsset(t *t
 		},
 		[]AnalysisFindingContext{
 			{
-				ID:                    "below_fold_gallery_waste",
+				ID:                    "repeated_gallery_overdelivery",
 				Category:              "media",
 				Severity:              "medium",
 				Confidence:            "high",
@@ -104,5 +104,35 @@ func TestBuildRuleBasedAssetInsightDefaultsToAssetScopeWithoutFinding(t *testing
 
 	if draft.Scope != "asset" {
 		t.Fatalf("expected asset scope, got %q", draft.Scope)
+	}
+}
+
+func TestRecommendedFixForFindingUsesAstroSnippetForGallery(t *testing.T) {
+	fix := recommendedFixForFinding(ReportContext{
+		SiteProfile: SiteProfileContext{
+			FrameworkHint: "astro",
+			Evidence:      []string{"Se detectaron nodos astro-island."},
+		},
+	}, AnalysisFindingContext{
+		ID: "repeated_gallery_overdelivery",
+	})
+
+	if fix == nil {
+		t.Fatal("expected fix suggestion")
+	}
+	if strings.Contains(fix.OptimizedCode, `next/image`) {
+		t.Fatalf("expected astro-specific code, got %q", fix.OptimizedCode)
+	}
+	if !strings.Contains(fix.OptimizedCode, `astro:assets`) {
+		t.Fatalf("expected astro snippet, got %q", fix.OptimizedCode)
+	}
+	if !strings.Contains(fix.OptimizedCode, `"eager"`) || !strings.Contains(fix.OptimizedCode, `"lazy"`) {
+		t.Fatalf("expected mixed eager/lazy guidance, got %q", fix.OptimizedCode)
+	}
+	if strings.Contains(fix.OptimizedCode, `index < 3`) {
+		t.Fatalf("expected snippet to avoid hardcoded first row size, got %q", fix.OptimizedCode)
+	}
+	if !strings.Contains(fix.OptimizedCode, `firstRowCount`) {
+		t.Fatalf("expected snippet to rely on firstRowCount, got %q", fix.OptimizedCode)
 	}
 }

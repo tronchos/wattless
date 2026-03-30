@@ -38,6 +38,10 @@ const fakeReport = {
   hosting_is_green: true,
   hosting_verdict: "green",
   hosted_by: "Example Host",
+  site_profile: {
+    framework_hint: "generic",
+    evidence: ["No se detectaron marcadores claros de framework; se usa perfil genérico."],
+  },
   summary: {
     total_requests: 1,
     successful_requests: 1,

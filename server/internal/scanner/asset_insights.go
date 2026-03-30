@@ -167,6 +167,9 @@ func makeInsightResource(resource ResourceSummary) insights.ResourceContext {
 		LoadingAttr:           resource.LoadingAttr,
 		FetchPriority:         resource.FetchPriority,
 		ResponsiveImage:       resource.ResponsiveImage,
+		NaturalWidth:          resource.NaturalWidth,
+		NaturalHeight:         resource.NaturalHeight,
+		VisibleRatio:          resource.VisibleRatio,
 		IsThirdPartyTool:      resource.IsThirdPartyTool,
 		ThirdPartyKind:        resource.ThirdPartyKind,
 	}

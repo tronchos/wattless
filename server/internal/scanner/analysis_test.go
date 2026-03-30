@@ -57,14 +57,21 @@ func TestBuildSummaryCountsNetworkFailuresWithoutStatusCodes(t *testing.T) {
 }
 
 func TestClassifyPositionBand(t *testing.T) {
-	if got := classifyPositionBand(&BoundingBox{Y: 100}, 900); got != positionAboveFold {
+	if got := classifyPositionBand(&BoundingBox{Y: 100, Height: 200}, 0.8, 900); got != positionAboveFold {
 		t.Fatalf("expected above fold, got %s", got)
 	}
-	if got := classifyPositionBand(&BoundingBox{Y: 1200}, 900); got != positionNearFold {
+	if got := classifyPositionBand(&BoundingBox{Y: 1200, Height: 200}, 0, 900); got != positionNearFold {
 		t.Fatalf("expected near fold, got %s", got)
 	}
-	if got := classifyPositionBand(&BoundingBox{Y: 2400}, 900); got != positionBelowFold {
+	if got := classifyPositionBand(&BoundingBox{Y: 2400, Height: 200}, 0, 900); got != positionBelowFold {
 		t.Fatalf("expected below fold, got %s", got)
+	}
+}
+
+func TestClassifyPositionBandTreatsFoldEdgeAsNearFold(t *testing.T) {
+	box := &BoundingBox{Y: 899, Height: 233}
+	if got := classifyPositionBand(box, 1.0/233.0, 900); got != positionNearFold {
+		t.Fatalf("expected near fold at viewport edge, got %s", got)
 	}
 }
 
@@ -224,7 +231,7 @@ func TestBuildAnalysisCreatesFindingsFromEvidence(t *testing.T) {
 	if !hasFinding(analysis.Findings, "font_stack_overweight") {
 		t.Fatal("expected font finding")
 	}
-	if !hasFinding(analysis.Findings, "main_thread_pressure") {
+	if !hasFinding(analysis.Findings, "main_thread_cpu_pressure") {
 		t.Fatal("expected main thread finding")
 	}
 }
@@ -281,9 +288,9 @@ func TestBuildAnalysisCreatesTextLCPFindingWithoutAssetURL(t *testing.T) {
 
 func TestBuildRepeatedGalleryFindingAvoidsBelowFoldClaimForMixedGroup(t *testing.T) {
 	resources := []enrichedResource{
-		{ID: "card-1", Type: "image", Bytes: 220_000},
-		{ID: "card-2", Type: "image", Bytes: 210_000},
-		{ID: "card-3", Type: "image", Bytes: 205_000},
+		{ID: "card-1", Type: "image", Bytes: 220_000, MIMEType: "image/webp", NaturalWidth: 1920, NaturalHeight: 1080, BoundingBox: &BoundingBox{Width: 414, Height: 233}},
+		{ID: "card-2", Type: "image", Bytes: 210_000, MIMEType: "image/webp", NaturalWidth: 1920, NaturalHeight: 1080, BoundingBox: &BoundingBox{Width: 414, Height: 233}},
+		{ID: "card-3", Type: "image", Bytes: 205_000, MIMEType: "image/webp", NaturalWidth: 1920, NaturalHeight: 1080, BoundingBox: &BoundingBox{Width: 414, Height: 233}},
 	}
 
 	finding := buildRepeatedGalleryFinding([]ResourceGroup{
@@ -301,6 +308,9 @@ func TestBuildRepeatedGalleryFindingAvoidsBelowFoldClaimForMixedGroup(t *testing
 	if finding == nil {
 		t.Fatal("expected repeated gallery finding")
 	}
+	if finding.ID != "repeated_gallery_overdelivery" {
+		t.Fatalf("expected renamed finding id, got %q", finding.ID)
+	}
 	title := strings.ToLower(finding.Title)
 	summary := strings.ToLower(finding.Summary)
 	if strings.Contains(title, "bajo el fold") {
@@ -308,6 +318,126 @@ func TestBuildRepeatedGalleryFindingAvoidsBelowFoldClaimForMixedGroup(t *testing
 	}
 	if strings.Contains(summary, "no frena el primer render") {
 		t.Fatalf("expected conservative summary, got %q", finding.Summary)
+	}
+}
+
+func TestEstimateResourceSavingsUsesImageFormatAndOverdelivery(t *testing.T) {
+	noOverdelivery := enrichedResource{
+		Type:          "image",
+		MIMEType:      "image/webp",
+		Bytes:         100_000,
+		NaturalWidth:  800,
+		NaturalHeight: 450,
+		BoundingBox:   &BoundingBox{Width: 400, Height: 225},
+	}
+	if got := estimateResourceSavings(noOverdelivery); got != 20_000 {
+		t.Fatalf("expected base webp savings, got %d", got)
+	}
+
+	strongOverdelivery := enrichedResource{
+		Type:          "image",
+		MIMEType:      "image/webp",
+		Bytes:         100_000,
+		NaturalWidth:  1920,
+		NaturalHeight: 1080,
+		BoundingBox:   &BoundingBox{Width: 640, Height: 360},
+	}
+	if got := estimateResourceSavings(strongOverdelivery); got != 55_556 {
+		t.Fatalf("expected responsive overdelivery savings, got %d", got)
+	}
+
+	cappedOverdelivery := enrichedResource{
+		Type:          "image",
+		MIMEType:      "image/webp",
+		Bytes:         100_000,
+		NaturalWidth:  1920,
+		NaturalHeight: 1080,
+		BoundingBox:   &BoundingBox{Width: 160, Height: 90},
+	}
+	if got := estimateResourceSavings(cappedOverdelivery); got != 70_000 {
+		t.Fatalf("expected capped image savings, got %d", got)
+	}
+}
+
+func TestBuildAnalysisDoesNotDuplicateHeavyMediaForMixedRepeatedGallery(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:            "card-1",
+			URL:           "https://example.com/courses/course-1.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         220_000,
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+			BoundingBox:   &BoundingBox{X: 0, Y: 700, Width: 414, Height: 233},
+			VisibleRatio:  0.86,
+		},
+		{
+			ID:            "card-2",
+			URL:           "https://example.com/courses/course-2.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         210_000,
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+			BoundingBox:   &BoundingBox{X: 420, Y: 950, Width: 414, Height: 233},
+		},
+		{
+			ID:            "card-3",
+			URL:           "https://example.com/courses/course-3.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         205_000,
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+			BoundingBox:   &BoundingBox{X: 840, Y: 2000, Width: 414, Height: 233},
+		},
+	}
+
+	annotated, groups := enrichResourcesForAnalysis(resources, PerformanceMetrics{}, 1440, 900)
+	for index, resource := range annotated {
+		if resource.VisualRole != visualRoleRepeatedCard {
+			t.Fatalf("expected repeated card visual role for resource %d, got %s", index, resource.VisualRole)
+		}
+	}
+
+	analysis := buildAnalysis(annotated, PerformanceMetrics{}, groups)
+	if !hasFinding(analysis.Findings, "repeated_gallery_overdelivery") {
+		t.Fatal("expected repeated gallery finding")
+	}
+	if hasFinding(analysis.Findings, "heavy_above_fold_media") {
+		t.Fatal("did not expect duplicate heavy above fold finding for repeated gallery members")
+	}
+}
+
+func TestBuildResponsiveImageFindingAvoidsCallingResponsiveMarkupNonResponsive(t *testing.T) {
+	finding := buildResponsiveImageFinding([]enrichedResource{
+		{
+			ID:              "hero-card",
+			Type:            "image",
+			MIMEType:        "image/webp",
+			Bytes:           180_000,
+			NaturalWidth:    2400,
+			NaturalHeight:   1350,
+			ResponsiveImage: true,
+			BoundingBox:     &BoundingBox{Width: 480, Height: 270},
+		},
+	}, nil, "")
+
+	if finding == nil {
+		t.Fatal("expected responsive image finding")
+	}
+	if strings.Contains(strings.ToLower(finding.Title), "no responsive") {
+		t.Fatalf("expected neutral title for responsive markup, got %q", finding.Title)
+	}
+	if strings.Contains(strings.ToLower(finding.Summary), "no se detectan variantes responsive") {
+		t.Fatalf("expected summary to acknowledge responsive markup, got %q", finding.Summary)
 	}
 }
 
