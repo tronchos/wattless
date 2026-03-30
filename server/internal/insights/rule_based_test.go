@@ -137,6 +137,26 @@ func TestRecommendedFixForFindingUsesAstroSnippetForGallery(t *testing.T) {
 	}
 }
 
+func TestRecommendedFixForFindingUsesNeutralNextSnippetForGallery(t *testing.T) {
+	fix := recommendedFixForFinding(ReportContext{
+		SiteProfile: SiteProfileContext{
+			FrameworkHint: "nextjs",
+		},
+	}, AnalysisFindingContext{
+		ID: "repeated_gallery_overdelivery",
+	})
+
+	if fix == nil {
+		t.Fatal("expected gallery fix")
+	}
+	if strings.Contains(fix.OptimizedCode, "CourseGrid") || strings.Contains(fix.OptimizedCode, "courses") {
+		t.Fatalf("expected neutral grid naming, got %q", fix.OptimizedCode)
+	}
+	if !strings.Contains(fix.OptimizedCode, "CardGrid") || !strings.Contains(fix.OptimizedCode, "items") {
+		t.Fatalf("expected generic grid snippet, got %q", fix.OptimizedCode)
+	}
+}
+
 func TestAssetTitleAvoidsOversizedLabelForTinyImages(t *testing.T) {
 	title := assetTitle(ResourceContext{
 		ID:                    "avatar",
@@ -176,6 +196,59 @@ func TestBuildRuleBasedAssetInsightUsesLowImpactCopyForSmallOversizedImage(t *te
 	}
 	if !strings.Contains(strings.ToLower(draft.RecommendedAction), "variante más pequeña") {
 		t.Fatalf("expected recommendation to mention smaller variant, got %q", draft.RecommendedAction)
+	}
+}
+
+func TestBuildRuleBasedAssetInsightUsesLogoSpecificCopy(t *testing.T) {
+	draft := BuildRuleBasedAssetInsight(
+		ResourceContext{
+			ID:                    "logo",
+			URL:                   "https://example.com/images/logo-light.png",
+			Type:                  "image",
+			MIMEType:              "image/png",
+			Bytes:                 38_394,
+			EstimatedSavingsBytes: 23_036,
+			NaturalWidth:          1570,
+			NaturalHeight:         319,
+			VisualRole:            "above_fold_media",
+		},
+		nil,
+		nil,
+	)
+
+	if draft.Title != "Logo raster sobredimensionado" {
+		t.Fatalf("expected logo-specific title, got %q", draft.Title)
+	}
+	if !strings.Contains(strings.ToLower(draft.ShortProblem), "logo") {
+		t.Fatalf("expected logo-specific short problem, got %q", draft.ShortProblem)
+	}
+	if !strings.Contains(strings.ToLower(draft.RecommendedAction), "svg") {
+		t.Fatalf("expected logo recommendation to mention svg, got %q", draft.RecommendedAction)
+	}
+}
+
+func TestBuildRuleBasedAssetInsightDoesNotTreatGenericIconAsLogo(t *testing.T) {
+	draft := BuildRuleBasedAssetInsight(
+		ResourceContext{
+			ID:                    "feature-icon",
+			URL:                   "https://example.com/images/feature-icon.png",
+			Type:                  "image",
+			MIMEType:              "image/png",
+			Bytes:                 38_394,
+			EstimatedSavingsBytes: 23_036,
+			NaturalWidth:          512,
+			NaturalHeight:         512,
+			VisualRole:            "above_fold_media",
+		},
+		nil,
+		nil,
+	)
+
+	if draft.Title == "Logo raster sobredimensionado" {
+		t.Fatalf("expected generic icon to avoid logo-specific title, got %q", draft.Title)
+	}
+	if strings.Contains(strings.ToLower(draft.RecommendedAction), "svg") {
+		t.Fatalf("expected generic icon to avoid logo-specific svg guidance, got %q", draft.RecommendedAction)
 	}
 }
 
@@ -230,6 +303,24 @@ func TestSummarizeReportProvidesFixesBeyondPrimaryAction(t *testing.T) {
 	}
 	if result.Insights.TopActions[2].RecommendedFix == nil {
 		t.Fatal("expected tertiary action to include a recommended fix")
+	}
+}
+
+func TestBuildExecutiveSummaryPrioritizesDominantImageFinding(t *testing.T) {
+	summary := buildExecutiveSummary(ReportContext{
+		Analysis: AnalysisContext{
+			Findings: []AnalysisFindingContext{
+				{
+					ID:         "dominant_image_overdelivery",
+					Severity:   "high",
+					Confidence: "high",
+				},
+			},
+		},
+	})
+
+	if !strings.Contains(strings.ToLower(summary), "un solo asset visual") {
+		t.Fatalf("expected dominant image summary, got %q", summary)
 	}
 }
 
@@ -354,5 +445,71 @@ func TestBuildRuleBasedAssetInsightPrefersAnalyticsFindingForAnalyticsScript(t *
 	}
 	if draft.Title != "Recorta la sobrecarga de analítica" {
 		t.Fatalf("expected analytics title, got %q", draft.Title)
+	}
+}
+
+func TestBuildRuleBasedAssetInsightPrefersDominantImageFindingOverGallery(t *testing.T) {
+	draft := BuildRuleBasedAssetInsight(
+		ResourceContext{
+			ID:         "blog-jpeg",
+			Type:       "image",
+			VisualRole: "repeated_card_media",
+		},
+		[]AnalysisFindingContext{
+			{
+				ID:                 "repeated_gallery_overdelivery",
+				Category:           "media",
+				Severity:           "medium",
+				Confidence:         "high",
+				Title:              "Reduce el peso de las miniaturas del blog",
+				Summary:            "Las miniaturas del blog suman demasiado peso.",
+				RelatedResourceIDs: []string{"blog-jpeg", "blog-avif"},
+			},
+			{
+				ID:                 "dominant_image_overdelivery",
+				Category:           "media",
+				Severity:           "high",
+				Confidence:         "high",
+				Title:              "Corrige una imagen dominante sobredimensionada",
+				Summary:            "Una sola imagen pesa demasiado.",
+				RelatedResourceIDs: []string{"blog-jpeg"},
+			},
+		},
+		[]TopAction{
+			{
+				ID:                 "act-gallery",
+				RelatedFindingID:   "repeated_gallery_overdelivery",
+				RelatedResourceIDs: []string{"blog-jpeg"},
+			},
+			{
+				ID:                 "act-dominant",
+				RelatedFindingID:   "dominant_image_overdelivery",
+				RelatedResourceIDs: []string{"blog-jpeg"},
+			},
+		},
+	)
+
+	if draft.RelatedFindingID != "dominant_image_overdelivery" {
+		t.Fatalf("expected dominant image finding to win over group finding, got %q", draft.RelatedFindingID)
+	}
+	if draft.RelatedActionID != "act-dominant" {
+		t.Fatalf("expected action to follow dominant image finding, got %q", draft.RelatedActionID)
+	}
+}
+
+func TestRecommendedFixForFindingProvidesSocialEmbedSnippet(t *testing.T) {
+	fix := recommendedFixForFinding(ReportContext{
+		SiteProfile: SiteProfileContext{
+			FrameworkHint: "nextjs",
+		},
+	}, AnalysisFindingContext{
+		ID: "third_party_social_overhead",
+	})
+
+	if fix == nil {
+		t.Fatal("expected social finding fix")
+	}
+	if !strings.Contains(fix.OptimizedCode, "Cargar publicación") || !strings.Contains(fix.OptimizedCode, "social.example.com/embed.js") {
+		t.Fatalf("expected social embed snippet, got %q", fix.OptimizedCode)
 	}
 }

@@ -234,7 +234,7 @@ func TestAttachAssetInsightsDoesNotLetUnrelatedAvatarInheritGalleryAction(t *tes
 	vampires := []ResourceSummary{
 		{
 			ID:                    "avatar",
-			URL:                   "https://example.com/teachers/midu.webp",
+				URL:                   "https://example.com/teachers/avatar.webp",
 			Type:                  "image",
 			Bytes:                 18_000,
 			EstimatedSavingsBytes: 12_000,

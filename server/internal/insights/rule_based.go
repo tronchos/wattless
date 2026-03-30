@@ -29,10 +29,14 @@ func (RuleBasedProvider) SuggestResource(resource ResourceContext) string {
 		return "Forma parte de una galería repetida. Optimízala en lote y sirve versiones más pequeñas para bajar el coste por visita."
 	case resource.IsThirdPartyTool && resource.ThirdPartyKind == "analytics":
 		return "Retrasa la analítica no esencial hasta interacción o agrupa proveedores para bajar ruido de red."
+	case resource.IsThirdPartyTool && resource.ThirdPartyKind == "social":
+		return "Difiere embeds y widgets sociales hasta interacción o viewport para evitar que compitan con la carga inicial."
 	case resource.Type == "font":
 		return "Subconjunta la fuente, limita variantes y sirve solo WOFF2."
 	case resource.Type == "script":
 		return "Divide el script, difiere el código no crítico y vigila Long Tasks además del peso transferido."
+	case isLogoLikeRaster(resource):
+		return "Si este logo puede ser vectorial, pásalo a SVG. Si debe seguir siendo bitmap, sirve una variante raster 2x del tamaño visible en lugar del original completo."
 	case lightlyOversizedImage(resource):
 		return "Sirve una variante más pequeña para esta imagen. El impacto total es limitado, pero evita entregar mucha más resolución de la necesaria."
 	case resource.Type == "image":
@@ -151,10 +155,13 @@ func prioritizeFindings(findings []AnalysisFindingContext) []AnalysisFindingCont
 	sort.Slice(sorted, func(i, j int) bool {
 		if SeverityRank(sorted[i].Severity) == SeverityRank(sorted[j].Severity) {
 			if ConfidenceRank(sorted[i].Confidence) == ConfidenceRank(sorted[j].Confidence) {
-				if sorted[i].EstimatedSavingsBytes == sorted[j].EstimatedSavingsBytes {
-					return sorted[i].ID < sorted[j].ID
+				if FindingPriorityRank(sorted[i].ID) == FindingPriorityRank(sorted[j].ID) {
+					if sorted[i].EstimatedSavingsBytes == sorted[j].EstimatedSavingsBytes {
+						return sorted[i].ID < sorted[j].ID
+					}
+					return sorted[i].EstimatedSavingsBytes > sorted[j].EstimatedSavingsBytes
 				}
-				return sorted[i].EstimatedSavingsBytes > sorted[j].EstimatedSavingsBytes
+				return FindingPriorityRank(sorted[i].ID) > FindingPriorityRank(sorted[j].ID)
 			}
 			return ConfidenceRank(sorted[i].Confidence) > ConfidenceRank(sorted[j].Confidence)
 		}
@@ -184,6 +191,10 @@ func findingImpact(finding AnalysisFindingContext) string {
 		return "medium"
 	case "heavy_above_fold_media":
 		return "medium"
+	case "dominant_image_overdelivery":
+		return "low"
+	case "third_party_social_overhead":
+		return "low"
 	default:
 		return "low"
 	}
@@ -214,13 +225,24 @@ func recommendedFixForFinding(report ReportContext, finding AnalysisFindingConte
 			},
 			ExpectedImpact: "Menos espera en el nodo textual que domina el render inicial.",
 		}
+	case "dominant_image_overdelivery":
+		return &RecommendedFix{
+			Summary:       "Sirve esta imagen con un tamaño realista para su caja visible y usa una variante moderna cuando el origen siga entregando formatos legacy.",
+			OptimizedCode: dominantImageOptimizedCode(framework),
+			Changes: []string{
+				"Se ajusta el tamaño de salida a la caja visible y a pantallas 2x",
+				"Se evita mandar originales de varios megapíxeles a miniaturas pequeñas",
+				"Se favorece un formato moderno o una calidad más disciplinada",
+			},
+			ExpectedImpact: "Gran recorte de bytes en un solo recurso desproporcionado.",
+		}
 	case "repeated_gallery_overdelivery":
 		return &RecommendedFix{
-			Summary:       "Patrón para listas visuales repetidas del catálogo: primeras tarjetas visibles con prioridad y el resto con variantes pequeñas y carga diferida.",
+			Summary:       "Patrón para listas visuales repetidas: primeras tarjetas visibles con prioridad y el resto con variantes pequeñas, formatos modernos y carga diferida.",
 			OptimizedCode: repeatedGalleryOptimizedCode(framework),
 			Changes: []string{
 				"Eager y prioridad solo para la primera fila visible",
-				"Variantes pequeñas y sizes realistas para cada tarjeta",
+				"Variantes pequeñas, sizes realistas y formatos modernos cuando aplique",
 				"Lazy loading para el resto del grid repetido",
 			},
 			ExpectedImpact: "Menor coste por visita sin tocar el primer render.",
@@ -234,6 +256,16 @@ func recommendedFixForFinding(report ReportContext, finding AnalysisFindingConte
 				"Se reduce ruido de red durante el render inicial",
 			},
 			ExpectedImpact: "Menos variabilidad y menos presión de terceros en el arranque.",
+		}
+	case "third_party_social_overhead":
+		return &RecommendedFix{
+			Summary:       "Carga diferida para embeds sociales: placeholder estático primero y script externo solo cuando haya interacción o el bloque entre en viewport.",
+			OptimizedCode: deferredSocialEmbedCode(framework),
+			Changes: []string{
+				"Se evita descargar widgets sociales durante el arranque",
+				"El embed real solo se activa cuando el usuario lo necesita",
+			},
+			ExpectedImpact: "Menos ruido de terceros y menos JS externo en la carga inicial.",
 		}
 	case "font_stack_overweight":
 		return &RecommendedFix{
@@ -280,6 +312,8 @@ func buildExecutiveSummary(report ReportContext) string {
 	top := firstFinding(report.Analysis.Findings)
 	gallery := dominantRepeatedGalleryGroup(report.Analysis.ResourceGroups)
 	switch {
+	case top != nil && top.ID == "dominant_image_overdelivery":
+		return "Un solo asset visual concentra demasiado peso para el valor que aporta. Antes de afinar el resto del sitio, conviene corregir esa sobreentrega desproporcionada."
 	case top != nil && top.ID == "render_lcp_candidate":
 		return "El cuello de botella principal está en el render crítico: Wattless detectó un recurso que coincide con el LCP y concentra el mejor retorno inmediato."
 	case top != nil && top.ID == "render_lcp_dom_node":
@@ -290,9 +324,9 @@ func buildExecutiveSummary(report ReportContext) string {
 		}
 		return "El peso de red no explica todo el problema: Wattless detectó presión real de CPU y Long Tasks que compiten con la experiencia inicial."
 	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
-		return "La home es rápida en el primer render, pero el catálogo visual por debajo del fold infla el coste por visita más de lo que parece."
+		return fmt.Sprintf("La home es rápida en el primer render, pero %s bajo el fold siguen inflando el coste por visita más de lo que parece.", withArticle(gallery.Label))
 	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000:
-		return "La home es rápida en el primer render, pero el catálogo visual repetido sigue inflando el coste por visita más de lo que parece."
+		return fmt.Sprintf("La home es rápida en el primer render, pero %s siguen inflando el coste por visita más de lo que parece.", withArticle(gallery.Label))
 	case report.Performance.LongTasksTotalMS >= 250:
 		return "El peso de red no explica todo el problema: hay presión real de CPU y Long Tasks que compiten con la experiencia inicial."
 	case report.Analysis.Summary.FontBytes >= 250_000:
@@ -306,10 +340,12 @@ func buildPitchLine(report ReportContext) string {
 	gallery := dominantRepeatedGalleryGroup(report.Analysis.ResourceGroups)
 	top := firstFinding(report.Analysis.Findings)
 	switch {
+	case top != nil && top.ID == "dominant_image_overdelivery":
+		return "Aquí hay un win claro: corregir una sola imagen dominante puede bajar muchísimo el peso total sin tocar el resto del sitio."
 	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
-		return "Tu arranque ya va bien; ahora toca recortar el coste visual acumulado bajo el fold para bajar bytes sin sacrificar UX."
+		return fmt.Sprintf("Tu arranque ya va bien; ahora toca recortar el coste acumulado de %s bajo el fold para bajar bytes sin sacrificar UX.", withArticle(gallery.Label))
 	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000:
-		return "Tu arranque ya va bien; ahora toca recortar el coste visual repetido del catálogo para bajar bytes sin sacrificar UX."
+		return fmt.Sprintf("Tu arranque ya va bien; ahora toca recortar el coste repetido de %s para bajar bytes sin sacrificar UX.", withArticle(gallery.Label))
 	case top != nil && top.ID == "main_thread_cpu_pressure" && top.Confidence == "low":
 		return "La CPU ya enseña fricción cerca del umbral; vigilarla ahora evita que esa variabilidad termine empeorando el arranque."
 	case report.Analysis.Summary.AnalyticsBytes >= 80_000:
@@ -367,6 +403,8 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 	for index := range findings {
 		finding := &findings[index]
 		switch {
+		case asset.ID != "" && finding.ID == "dominant_image_overdelivery" && containsString(finding.RelatedResourceIDs, asset.ID):
+			candidates = append(candidates, finding)
 		case asset.VisualRole == "repeated_card_media" && finding.ID == "repeated_gallery_overdelivery":
 			candidates = append(candidates, finding)
 		case asset.VisualRole == "lcp_candidate" && finding.ID == "render_lcp_candidate":
@@ -376,6 +414,8 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 		case asset.Type == "font" && finding.ID == "font_stack_overweight":
 			candidates = append(candidates, finding)
 		case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics" && finding.ID == "third_party_analytics_overhead":
+			candidates = append(candidates, finding)
+		case asset.IsThirdPartyTool && asset.ThirdPartyKind == "social" && finding.ID == "third_party_social_overhead":
 			candidates = append(candidates, finding)
 		}
 	}
@@ -415,7 +455,11 @@ func findingPreferredForAsset(asset ResourceContext, left, right AnalysisFinding
 
 func assetFindingPreferenceScore(asset ResourceContext, finding AnalysisFindingContext) int {
 	switch {
+	case finding.ID == "dominant_image_overdelivery":
+		return 4
 	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics" && finding.ID == "third_party_analytics_overhead":
+		return 3
+	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "social" && finding.ID == "third_party_social_overhead":
 		return 3
 	case asset.Type == "font" && finding.ID == "font_stack_overweight":
 		return 3
@@ -448,10 +492,14 @@ func assetTitle(asset ResourceContext, finding *AnalysisFindingContext) string {
 		return "Coste tipográfico concentrado"
 	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics":
 		return "Sobrecarga de analítica"
+	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "social":
+		return "Sobrecarga de embeds sociales"
 	case asset.VisualRole == "lcp_candidate":
 		return "Candidato real al LCP"
 	case asset.VisualRole == "repeated_card_media":
 		return "Media repetida en el catálogo"
+	case isLogoLikeRaster(asset):
+		return "Logo raster sobredimensionado"
 	case materiallyOversizedImage(asset):
 		return "Imagen sobredimensionada"
 	case lightlyOversizedImage(asset):
@@ -481,6 +529,10 @@ func assetShortProblem(asset ResourceContext, finding *AnalysisFindingContext) s
 			return "Este media vive en la zona visible inicial y pesa más de lo razonable para su rol."
 		case "third_party_analytics_overhead":
 			return "Esta dependencia de analítica añade coste de red y variabilidad sin aportar al render inicial."
+		case "third_party_social_overhead":
+			return "Estos embeds o widgets sociales añaden peso y variabilidad sin ayudar al contenido inicial."
+		case "dominant_image_overdelivery":
+			return "Esta imagen por sí sola ya pesa mucho más de lo razonable para su caja real."
 		case "font_stack_overweight":
 			return "Este archivo forma parte de una pila tipográfica más pesada de lo necesario."
 		case "main_thread_cpu_pressure":
@@ -496,6 +548,10 @@ func assetShortProblem(asset ResourceContext, finding *AnalysisFindingContext) s
 		return "La petición falló y sigue contando como deuda técnica del flujo auditado."
 	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics":
 		return "La analítica suma carga de red sin ayudar al contenido visible."
+	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "social":
+		return "El embed social añade peso y JS externo sin mejorar el contenido inicial."
+	case isLogoLikeRaster(asset):
+		return "El logo se sirve como raster con mucha más resolución de la que necesita su caja visible."
 	case asset.VisualRole == "repeated_card_media":
 		return "Este asset se repite en un listado visual y escala mal cuando crece el catálogo."
 	case asset.VisualRole == "lcp_candidate":
@@ -529,6 +585,10 @@ func assetWhyItMatters(asset ResourceContext, finding *AnalysisFindingContext) s
 		return "Las fuentes impactan el primer render incluso cuando su peso parece pequeño frente a las imágenes."
 	case asset.Type == "script":
 		return "Los scripts pueden competir con el render y elevar Long Tasks aunque no sean el archivo más pesado."
+	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "social":
+		return "Los widgets sociales introducen terceros extra, más red y más variabilidad de la necesaria."
+	case isLogoLikeRaster(asset):
+		return "No suele dominar el sitio por sí solo, pero es una optimización limpia y repetible para una pieza visible de branding."
 	case asset.VisualRole == "repeated_card_media":
 		return "Multiplicado por todo el grid, este patrón sube rápido el coste total por visita."
 	case lightlyOversizedImage(asset):
@@ -636,6 +696,55 @@ func lightlyOversizedImage(asset ResourceContext) bool {
 	return !materiallyOversizedImage(asset)
 }
 
+func isLogoLikeRaster(asset ResourceContext) bool {
+	if asset.Type != "image" {
+		return false
+	}
+	mimeType := strings.ToLower(asset.MIMEType)
+	if !(strings.Contains(mimeType, "png") || strings.Contains(mimeType, "jpeg") || strings.Contains(mimeType, "jpg")) {
+		return false
+	}
+	if asset.NaturalWidth <= 0 || asset.NaturalHeight <= 0 {
+		return false
+	}
+	haystack := strings.ToLower(asset.URL)
+	if !containsAny(haystack, "logo", "brand", "wordmark", "logotype") {
+		return false
+	}
+	if asset.VisualRole != "above_fold_media" && asset.VisualRole != "hero_media" {
+		return false
+	}
+	return float64(asset.NaturalWidth)/float64(asset.NaturalHeight) >= 1.5
+}
+
+func containsAny(value string, tokens ...string) bool {
+	for _, token := range tokens {
+		if strings.Contains(value, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func withArticle(label string) string {
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "miniaturas del blog":
+		return "las miniaturas del blog"
+	case "logos de partners":
+		return "los logos de partners"
+	case "banderas":
+		return "las banderas"
+	case "avatares":
+		return "los avatares"
+	case "colección de miniaturas":
+		return "la colección de miniaturas"
+	case "grid de tarjetas":
+		return "el grid de tarjetas"
+	default:
+		return strings.ToLower(strings.TrimSpace(label))
+	}
+}
+
 func normalizedFrameworkHint(value string) string {
 	switch value {
 	case "astro", "nextjs", "generic", "unknown":
@@ -731,48 +840,92 @@ import { Image } from "astro:assets";
 const firstRowCount = Math.max(1, Astro.props.firstRowCount ?? 1);
 ---
 
-{courses.map((course, index) => (
+{items.map((item, index) => (
   <Image
-    src={course.cover}
-    alt={course.title}
+    src={item.image}
+    alt={item.title}
     widths={[320, 480, 640]}
     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+    format="avif"
     loading={index < firstRowCount ? "eager" : "lazy"}
     fetchpriority={index < firstRowCount ? "high" : "auto"}
   />
 ))}`
 	case "generic", "unknown":
-		return `function renderCourseGrid(courses, options) {
+		return `function renderCardGrid(items, options) {
   options = options || {};
   const firstRowCount = Math.max(1, options.firstRowCount || 1);
-  return courses.map(function (course, index) {
+  return items.map(function (item, index) {
     const isVisibleRow = index < firstRowCount;
     return '<img ' +
-      'src="' + course.cover480 + '" ' +
-      'srcset="' + course.cover320 + ' 320w, ' + course.cover480 + ' 480w, ' + course.cover640 + ' 640w" ' +
+      'src="' + item.image480 + '" ' +
+      'srcset="' + item.image320 + ' 320w, ' + item.image480 + ' 480w, ' + item.image640 + ' 640w" ' +
       'sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" ' +
       'width="480" height="270" ' +
       'loading="' + (isVisibleRow ? "eager" : "lazy") + '" ' +
       'fetchpriority="' + (isVisibleRow ? "high" : "auto") + '" ' +
-      'alt="' + course.title + '">' ;
+      'alt="' + item.title + '">' ;
   }).join("");
 }`
 	default:
 		return `import Image from "next/image";
 
-export function CourseGrid({ courses, firstRowCount = 1 }) {
-  return courses.map((course, index) => (
+export function CardGrid({ items, firstRowCount = 1 }) {
+  return items.map((item, index) => (
     <Image
-      key={course.slug}
-      src={course.cover}
-      alt={course.title}
+      key={item.id ?? item.slug ?? item.href ?? index}
+      src={item.image}
+      alt={item.title}
       width={480}
       height={270}
       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+      quality={68}
       loading={index < firstRowCount ? "eager" : "lazy"}
       fetchPriority={index < firstRowCount ? "high" : "auto"}
     />
   ));
+}`
+	}
+}
+
+func dominantImageOptimizedCode(framework string) string {
+	switch framework {
+	case "astro":
+		return `---
+import { Image } from "astro:assets";
+---
+
+<Image
+  src={Astro.props.image}
+  alt={Astro.props.title}
+  widths={[288, 576, 864]}
+  sizes="(max-width: 768px) 100vw, 288px"
+  format="avif"
+  quality={68}
+/>`
+	case "generic", "unknown":
+		return `<img
+  src="/images/card-576.avif"
+  srcset="/images/card-288.avif 288w, /images/card-576.avif 576w, /images/card-864.avif 864w"
+  sizes="(max-width: 768px) 100vw, 288px"
+  width="288"
+  height="114"
+  alt="Miniatura optimizada"
+  loading="lazy">`
+	default:
+		return `import Image from "next/image";
+
+export function CardThumbnail({ item }) {
+  return (
+    <Image
+      src={item.image}
+      alt={item.title}
+      width={576}
+      height={228}
+      sizes="(max-width: 768px) 100vw, 288px"
+      quality={68}
+    />
+  );
 }`
 	}
 }
@@ -800,6 +953,49 @@ export function DeferredAnalytics() {
       document.head.appendChild(script);
     });
   });
+</script>`
+}
+
+func deferredSocialEmbedCode(framework string) string {
+	if framework == "nextjs" {
+		return `import { useState } from "react";
+import Script from "next/script";
+
+export function SocialEmbed() {
+  const [enabled, setEnabled] = useState(false);
+
+  return (
+    <section>
+      {!enabled ? (
+        <button onClick={() => setEnabled(true)}>
+          Cargar publicación
+        </button>
+      ) : null}
+      {enabled ? (
+        <Script
+          src="https://social.example.com/embed.js"
+          strategy="lazyOnload"
+        />
+      ) : null}
+      <div data-social-embed />
+    </section>
+  );
+}`
+	}
+
+	return `<section>
+  <button type="button" data-load-social>
+    Cargar publicación
+  </button>
+  <div data-social-embed></div>
+</section>
+<script>
+  document.querySelector("[data-load-social]")?.addEventListener("click", () => {
+    const script = document.createElement("script");
+    script.src = "https://social.example.com/embed.js";
+    script.async = true;
+    document.head.appendChild(script);
+  }, { once: true });
 </script>`
 }
 

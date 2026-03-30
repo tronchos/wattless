@@ -42,11 +42,19 @@ const (
 	thirdPartyPayment   = "payment"
 	thirdPartyUnknown   = "unknown"
 
-	nearThresholdLongTasksMS int64 = 200
-	mainThreadLongTasksMS    int64 = 250
-	materialVampireBytes     int64 = 32_000
-	materialVampireSavings   int64 = 16_000
-	minGuaranteedVisualVamps       = 2
+	nearThresholdLongTasksMS    int64 = 200
+	mainThreadLongTasksMS       int64 = 250
+	materialVampireBytes        int64 = 32_000
+	materialVampireSavings      int64 = 16_000
+	minGuaranteedVisualVamps          = 2
+	dominantImageMinBytes       int64 = 1_000_000
+	dominantImageHighBytes      int64 = 2_000_000
+	dominantImageMinSavings     int64 = 250_000
+	dominantImageMinShare             = 25.0
+	dominantImageHighShare            = 40.0
+	dominantGroupShareThreshold       = 0.70
+	socialFindingMinBytes       int64 = 250_000
+	socialFindingMinRequests          = 8
 )
 
 func normalizeType(resourceType, mimeType, rawURL string) string {
@@ -476,6 +484,11 @@ func sanitizeGroupID(value string) string {
 }
 
 func repeatedGalleryLabel(resources []enrichedResource, viewportHeight int) string {
+	if len(resources) > 0 {
+		if label := semanticGalleryLabel(semanticPathPrefix(resources[0].URL)); label != "" {
+			return label
+		}
+	}
 	belowFold := 0
 	for _, resource := range resources {
 		band := resource.PositionBand
@@ -493,6 +506,22 @@ func repeatedGalleryLabel(resources []enrichedResource, viewportHeight int) stri
 		return "Grid de tarjetas"
 	default:
 		return "Galería repetida de imágenes"
+	}
+}
+
+func semanticGalleryLabel(prefix string) string {
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	switch {
+	case containsAny(prefix, "/img/blog", "/blog", "/posts", "/articles"):
+		return "Miniaturas del blog"
+	case containsAny(prefix, "/partners", "/clients", "/logos"):
+		return "Logos de partners"
+	case containsAny(prefix, "/flags"):
+		return "Banderas"
+	case containsAny(prefix, "/avatars", "/team", "/testimonials"):
+		return "Avatares"
+	default:
+		return ""
 	}
 }
 
@@ -598,18 +627,22 @@ func buildAnalysis(resources []enrichedResource, perf PerformanceMetrics, groups
 		summary.RepeatedGalleryCount += group.ResourceCount
 	}
 
-	findings := make([]AnalysisFinding, 0, 6)
+	findings := make([]AnalysisFinding, 0, 8)
+	dominantImageFinding := buildDominantImageFinding(resources, groups)
 	if finding := buildLCPFinding(resources, lcpResource, perf); finding != nil {
 		findings = append(findings, *finding)
 	}
 	if finding := buildMainThreadFinding(resources, perf); finding != nil {
 		findings = append(findings, *finding)
 	}
-	if finding := buildRepeatedGalleryFinding(groups, resources); finding != nil {
+	if dominantImageFinding != nil {
+		findings = append(findings, *dominantImageFinding)
+	}
+	if finding := buildRepeatedGalleryFinding(groups, resources, dominantImageFinding); finding != nil {
 		findings = append(findings, *finding)
 	}
-	if finding := buildThirdPartyFinding(resources, summary); finding != nil {
-		findings = append(findings, *finding)
+	for _, finding := range buildThirdPartyFindings(resources, groups) {
+		findings = append(findings, finding)
 	}
 	if finding := buildFontFinding(resources, summary); finding != nil {
 		findings = append(findings, *finding)
@@ -624,10 +657,13 @@ func buildAnalysis(resources []enrichedResource, perf PerformanceMetrics, groups
 	sort.Slice(findings, func(i, j int) bool {
 		if insights.SeverityRank(findings[i].Severity) == insights.SeverityRank(findings[j].Severity) {
 			if insights.ConfidenceRank(findings[i].Confidence) == insights.ConfidenceRank(findings[j].Confidence) {
-				if findings[i].EstimatedSavingsBytes == findings[j].EstimatedSavingsBytes {
-					return findings[i].ID < findings[j].ID
+				if insights.FindingPriorityRank(findings[i].ID) == insights.FindingPriorityRank(findings[j].ID) {
+					if findings[i].EstimatedSavingsBytes == findings[j].EstimatedSavingsBytes {
+						return findings[i].ID < findings[j].ID
+					}
+					return findings[i].EstimatedSavingsBytes > findings[j].EstimatedSavingsBytes
 				}
-				return findings[i].EstimatedSavingsBytes > findings[j].EstimatedSavingsBytes
+				return insights.FindingPriorityRank(findings[i].ID) > insights.FindingPriorityRank(findings[j].ID)
 			}
 			return insights.ConfidenceRank(findings[i].Confidence) > insights.ConfidenceRank(findings[j].Confidence)
 		}
@@ -638,6 +674,85 @@ func buildAnalysis(resources []enrichedResource, perf PerformanceMetrics, groups
 		Summary:        summary,
 		Findings:       findings,
 		ResourceGroups: groups,
+	}
+}
+
+func buildDominantImageFinding(resources []enrichedResource, groups []ResourceGroup) *AnalysisFinding {
+	totalBytes := sumBytes(resources)
+	var candidate *enrichedResource
+	for index := range resources {
+		resource := &resources[index]
+		if resource.Type != "image" {
+			continue
+		}
+		share := shareOf(resource.Bytes, totalBytes)
+		if resource.Bytes < dominantImageMinBytes && share < dominantImageMinShare {
+			continue
+		}
+		if estimateResourceSavings(*resource) < dominantImageMinSavings {
+			continue
+		}
+		if !hasMeasuredRenderedBox(*resource) {
+			continue
+		}
+		ratio := naturalToRenderedRatio(*resource)
+		if ratio <= 0 {
+			continue
+		}
+		if ratio < 8 && resource.ResponsiveImage {
+			continue
+		}
+		if candidate == nil || resource.Bytes > candidate.Bytes || (resource.Bytes == candidate.Bytes && estimateResourceSavings(*resource) > estimateResourceSavings(*candidate)) {
+			candidate = resource
+		}
+	}
+	if candidate == nil {
+		return nil
+	}
+
+	severity := "medium"
+	share := shareOf(candidate.Bytes, totalBytes)
+	if candidate.Bytes >= dominantImageHighBytes || share >= dominantImageHighShare {
+		severity = "high"
+	}
+
+	group := repeatedGalleryGroupForResource(groups, candidate.ID)
+	members := []enrichedResource(nil)
+	if group != nil {
+		members = resourcesForIDs(resources, group.RelatedResourceIDs)
+	}
+
+	title := "Corrige una imagen dominante sobredimensionada"
+	summary := fmt.Sprintf("Una sola imagen transfiere %s y se sirve mucho más grande de lo que exige su caja real. Aquí hay una oportunidad desproporcionada para bajar bytes sin tocar el resto del sitio.", humanBytes(candidate.Bytes))
+	if group != nil && candidateDominatesGroup(*candidate, *group) {
+		summary = fmt.Sprintf("Una sola imagen concentra %s de %s. Aunque forma parte de %s, su peso individual ya justifica atacarla primero.", humanBytes(candidate.Bytes), humanBytes(group.TotalBytes), strings.ToLower(withArticle(group.Label)))
+	}
+
+	evidence := []string{
+		fmt.Sprintf("Transfiere %s.", humanBytes(candidate.Bytes)),
+		fmt.Sprintf("Representa %.1f%% de todos los bytes transferidos.", share),
+		fmt.Sprintf("Tamaño natural: %dx%d para una caja aproximada de %.0fx%.0f.", candidate.NaturalWidth, candidate.NaturalHeight, boundingWidth(candidate.BoundingBox), boundingHeight(candidate.BoundingBox)),
+	}
+	if candidate.PositionBand != "" && candidate.PositionBand != positionUnknown {
+		evidence = append(evidence, fmt.Sprintf("Posición visual: %s.", strings.ReplaceAll(candidate.PositionBand, "_", " ")))
+	}
+	if group != nil && groupHasMixedFormats(members) {
+		evidence = append(evidence, "Dentro del mismo bloque conviven formatos legacy y modernos.")
+	}
+	if group != nil && legacyAssetOutweighsModernSibling(*candidate, members) {
+		evidence = append(evidence, "Dentro del mismo bloque ya existen variantes modernas mucho más ligeras.")
+	}
+
+	return &AnalysisFinding{
+		ID:                    "dominant_image_overdelivery",
+		Category:              "media",
+		Severity:              severity,
+		Confidence:            "high",
+		Title:                 title,
+		Summary:               summary,
+		Evidence:              evidence,
+		EstimatedSavingsBytes: estimateResourceSavings(*candidate),
+		RelatedResourceIDs:    []string{candidate.ID},
 	}
 }
 
@@ -714,70 +829,116 @@ func buildLCPFinding(resources []enrichedResource, resource *enrichedResource, p
 	}
 }
 
-func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedResource) *AnalysisFinding {
+func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedResource, dominantImageFinding *AnalysisFinding) *AnalysisFinding {
 	candidate := dominantRepeatedGalleryGroup(groups)
 	if candidate == nil {
 		return nil
 	}
 
 	members := resourcesForIDs(resources, candidate.RelatedResourceIDs)
+	dominantResourceID := ""
+	if dominantImageFinding != nil && len(dominantImageFinding.RelatedResourceIDs) > 0 {
+		dominantResourceID = dominantImageFinding.RelatedResourceIDs[0]
+	}
+	if dominantResourceID != "" {
+		if dominant := resourceForID(resources, dominantResourceID); dominant != nil && candidateContainsResource(*candidate, dominantResourceID) && candidateDominatesGroup(*dominant, *candidate) {
+			if candidate.TotalBytes-dominant.Bytes < 400_000 {
+				return nil
+			}
+		}
+	}
 	missingResponsive := countNonResponsiveImages(members)
 	medianRatio := medianNaturalToRenderedRatio(members)
+	mixedFormats := groupHasMixedFormats(members)
 
-	title := "Comprime la galería repetida del catálogo"
-	summary := fmt.Sprintf("%s suma %s. No todo este bloque es crítico para el viewport inicial, pero sí infla el coste por visita y multiplica el peso del catálogo visual.", candidate.Label, humanBytes(candidate.TotalBytes))
+	title := fmt.Sprintf("Reduce el peso de %s", withArticle(candidate.Label))
+	summary := fmt.Sprintf("%s suma %s. No todo este bloque es crítico para el viewport inicial, pero sí infla el coste por visita y multiplica el peso del bloque visual.", candidate.Label, humanBytes(candidate.TotalBytes))
 
 	switch candidate.PositionBand {
 	case positionBelowFold:
-		title = "Comprime la galería que vive bajo el fold"
-		summary = fmt.Sprintf("%s suma %s. No frena el primer render, pero sí infla el coste por visita y multiplica el peso del catálogo visual.", candidate.Label, humanBytes(candidate.TotalBytes))
+		title = fmt.Sprintf("Reduce el peso de %s bajo el fold", withArticle(candidate.Label))
+		summary = fmt.Sprintf("%s suma %s. No frena el primer render, pero sí infla el coste por visita y multiplica el peso del bloque visual.", candidate.Label, humanBytes(candidate.TotalBytes))
 	case positionNearFold:
-		title = "Comprime la galería repetida cerca del fold"
-		summary = fmt.Sprintf("%s suma %s. Parte de ese catálogo entra pronto en pantalla, pero su volumen sigue inflando el coste por visita más allá del primer viewport.", candidate.Label, humanBytes(candidate.TotalBytes))
+		title = fmt.Sprintf("Reduce el peso de %s cerca del fold", withArticle(candidate.Label))
+		summary = fmt.Sprintf("%s suma %s. Parte de ese bloque entra pronto en pantalla, pero su volumen sigue inflando el coste por visita más allá del primer viewport.", candidate.Label, humanBytes(candidate.TotalBytes))
+	}
+
+	evidence := []string{
+		fmt.Sprintf("Grupo detectado: %s.", candidate.Label),
+		fmt.Sprintf("Transferencia agregada: %s en %d recursos.", humanBytes(candidate.TotalBytes), candidate.ResourceCount),
+		fmt.Sprintf("Posición dominante: %s.", strings.ReplaceAll(candidate.PositionBand, "_", " ")),
+		fmt.Sprintf("Imágenes sin srcset/sizes: %d de %d.", missingResponsive, len(members)),
+		fmt.Sprintf("Mediana natural/rendered: %s.", humanRatio(medianRatio)),
+	}
+	if mixedFormats {
+		evidence = append(evidence, "El grupo mezcla formatos legacy y modernos.")
+	}
+	if dominantResourceID != "" {
+		if dominant := resourceForID(resources, dominantResourceID); dominant != nil && candidateContainsResource(*candidate, dominantResourceID) && legacyAssetOutweighsModernSibling(*dominant, members) {
+			evidence = append(evidence, "Dentro del grupo, un JPEG/PNG pesa mucho más que un sibling moderno comparable.")
+		}
 	}
 
 	return &AnalysisFinding{
-		ID:         "repeated_gallery_overdelivery",
-		Category:   "media",
-		Severity:   "medium",
-		Confidence: "high",
-		Title:      title,
-		Summary:    summary,
-		Evidence: []string{
-			fmt.Sprintf("Grupo detectado: %s.", candidate.Label),
-			fmt.Sprintf("Transferencia agregada: %s en %d recursos.", humanBytes(candidate.TotalBytes), candidate.ResourceCount),
-			fmt.Sprintf("Posición dominante: %s.", strings.ReplaceAll(candidate.PositionBand, "_", " ")),
-			fmt.Sprintf("Imágenes sin srcset/sizes: %d de %d.", missingResponsive, len(members)),
-			fmt.Sprintf("Mediana natural/rendered: %s.", humanRatio(medianRatio)),
-		},
+		ID:                    "repeated_gallery_overdelivery",
+		Category:              "media",
+		Severity:              "medium",
+		Confidence:            "high",
+		Title:                 title,
+		Summary:               summary,
+		Evidence:              evidence,
 		EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, candidate.RelatedResourceIDs),
 		RelatedResourceIDs:    append([]string(nil), candidate.RelatedResourceIDs...),
 	}
 }
 
-func buildThirdPartyFinding(resources []enrichedResource, summary AnalysisSummary) *AnalysisFinding {
-	if summary.AnalyticsRequests < 2 && summary.AnalyticsBytes < 80_000 {
-		return nil
+func buildThirdPartyFindings(resources []enrichedResource, groups []ResourceGroup) []AnalysisFinding {
+	findings := make([]AnalysisFinding, 0, 2)
+	for _, group := range groups {
+		if group.Kind != groupKindThirdParty {
+			continue
+		}
+		members := resourcesForIDs(resources, group.RelatedResourceIDs)
+		switch dominantThirdPartyKind(members) {
+		case thirdPartyAnalytics:
+			if group.ResourceCount < 2 && group.TotalBytes < 80_000 {
+				continue
+			}
+			findings = append(findings, AnalysisFinding{
+				ID:         "third_party_analytics_overhead",
+				Category:   "third_party",
+				Severity:   "medium",
+				Confidence: "high",
+				Title:      "Recorta la sobrecarga de analítica",
+				Summary:    fmt.Sprintf("La capa de analítica añade %s en %d peticiones. No suele ser el cuello de botella principal, pero sí añade ruido de red y variabilidad.", humanBytes(group.TotalBytes), group.ResourceCount),
+				Evidence: []string{
+					fmt.Sprintf("Bytes de analítica: %s.", humanBytes(group.TotalBytes)),
+					fmt.Sprintf("Peticiones de analítica: %d.", group.ResourceCount),
+				},
+				EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, group.RelatedResourceIDs),
+				RelatedResourceIDs:    append([]string(nil), group.RelatedResourceIDs...),
+			})
+		case thirdPartySocial:
+			if group.TotalBytes < socialFindingMinBytes && group.ResourceCount < socialFindingMinRequests {
+				continue
+			}
+			findings = append(findings, AnalysisFinding{
+				ID:         "third_party_social_overhead",
+				Category:   "third_party",
+				Severity:   "medium",
+				Confidence: "high",
+				Title:      "Retrasa embeds y widgets sociales",
+				Summary:    fmt.Sprintf("Los recursos sociales añaden %s en %d peticiones. No suelen ayudar al contenido inicial, pero sí meten ruido de red, scripts externos y variabilidad.", humanBytes(group.TotalBytes), group.ResourceCount),
+				Evidence: []string{
+					fmt.Sprintf("Bytes del cluster social: %s.", humanBytes(group.TotalBytes)),
+					fmt.Sprintf("Peticiones del cluster social: %d.", group.ResourceCount),
+				},
+				EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, group.RelatedResourceIDs),
+				RelatedResourceIDs:    append([]string(nil), group.RelatedResourceIDs...),
+			})
+		}
 	}
-
-	related := collectResourceIDs(filterResources(resources, func(resource enrichedResource) bool {
-		return resource.IsThirdPartyTool && resource.ThirdPartyKind == thirdPartyAnalytics
-	}))
-
-	return &AnalysisFinding{
-		ID:         "third_party_analytics_overhead",
-		Category:   "third_party",
-		Severity:   "medium",
-		Confidence: "high",
-		Title:      "Recorta la sobrecarga de analítica",
-		Summary:    fmt.Sprintf("La capa de analítica añade %s en %d peticiones. No suele ser el cuello de botella principal, pero sí añade ruido de red y variabilidad.", humanBytes(summary.AnalyticsBytes), summary.AnalyticsRequests),
-		Evidence: []string{
-			fmt.Sprintf("Bytes de analítica: %s.", humanBytes(summary.AnalyticsBytes)),
-			fmt.Sprintf("Peticiones de analítica: %d.", summary.AnalyticsRequests),
-		},
-		EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, related),
-		RelatedResourceIDs:    related,
-	}
+	return findings
 }
 
 func dominantRepeatedGalleryGroup(groups []ResourceGroup) *ResourceGroup {
@@ -792,6 +953,154 @@ func dominantRepeatedGalleryGroup(groups []ResourceGroup) *ResourceGroup {
 		}
 	}
 	return candidate
+}
+
+func repeatedGalleryGroupForResource(groups []ResourceGroup, resourceID string) *ResourceGroup {
+	for index := range groups {
+		group := &groups[index]
+		if group.Kind != groupKindRepeatedGallery {
+			continue
+		}
+		if candidateContainsResource(*group, resourceID) {
+			return group
+		}
+	}
+	return nil
+}
+
+func candidateContainsResource(group ResourceGroup, resourceID string) bool {
+	for _, id := range group.RelatedResourceIDs {
+		if id == resourceID {
+			return true
+		}
+	}
+	return false
+}
+
+func candidateDominatesGroup(resource enrichedResource, group ResourceGroup) bool {
+	if group.TotalBytes <= 0 {
+		return false
+	}
+	return float64(resource.Bytes)/float64(group.TotalBytes) >= dominantGroupShareThreshold
+}
+
+func hasMeasuredRenderedBox(resource enrichedResource) bool {
+	return resource.BoundingBox != nil && resource.BoundingBox.Width > 0 && resource.BoundingBox.Height > 0
+}
+
+func dominantThirdPartyKind(resources []enrichedResource) string {
+	bestKind := thirdPartyUnknown
+	bestBytes := int64(0)
+	for _, resource := range resources {
+		if resource.Bytes > bestBytes {
+			bestBytes = resource.Bytes
+			bestKind = resource.ThirdPartyKind
+		}
+	}
+	return bestKind
+}
+
+func groupHasMixedFormats(resources []enrichedResource) bool {
+	hasLegacy := false
+	hasModern := false
+	for _, resource := range resources {
+		switch {
+		case isLegacyImageFormat(resource.MIMEType):
+			hasLegacy = true
+		case isModernImageFormat(resource.MIMEType):
+			hasModern = true
+		}
+	}
+	return hasLegacy && hasModern
+}
+
+func legacyAssetOutweighsModernSibling(candidate enrichedResource, resources []enrichedResource) bool {
+	if !isLegacyImageFormat(candidate.MIMEType) {
+		return false
+	}
+	candidateKey := canonicalImageVariantKey(candidate.URL)
+	if candidateKey == "" {
+		return false
+	}
+	for _, resource := range resources {
+		if resource.ID == candidate.ID || !isModernImageFormat(resource.MIMEType) {
+			continue
+		}
+		if !isComparableModernVariant(candidate, resource, candidateKey) {
+			continue
+		}
+		if candidate.Bytes >= resource.Bytes*4 {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalImageVariantKey(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	base := path.Base(parsed.Path)
+	ext := path.Ext(base)
+	if ext == "" {
+		return ""
+	}
+	base = strings.TrimSuffix(base, ext)
+	base = strings.ToLower(strings.TrimSpace(base))
+	if base == "" {
+		return ""
+	}
+	dir := strings.ToLower(strings.TrimSpace(path.Dir(parsed.Path)))
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	return host + "|" + dir + "|" + base
+}
+
+func isComparableModernVariant(candidate, other enrichedResource, candidateKey string) bool {
+	if !hasMeasuredRenderedBox(candidate) || !hasMeasuredRenderedBox(other) {
+		return false
+	}
+	if canonicalImageVariantKey(other.URL) != candidateKey {
+		return false
+	}
+	if !boxesAreComparable(candidate.BoundingBox, other.BoundingBox) {
+		return false
+	}
+	return naturalAspectRatiosComparable(candidate, other)
+}
+
+func boxesAreComparable(left, right *BoundingBox) bool {
+	if left == nil || right == nil || left.Width <= 0 || left.Height <= 0 || right.Width <= 0 || right.Height <= 0 {
+		return false
+	}
+	return roughlyComparableRatio(left.Width, right.Width, 0.25) && roughlyComparableRatio(left.Height, right.Height, 0.25)
+}
+
+func naturalAspectRatiosComparable(left, right enrichedResource) bool {
+	if left.NaturalWidth <= 0 || left.NaturalHeight <= 0 || right.NaturalWidth <= 0 || right.NaturalHeight <= 0 {
+		return false
+	}
+	leftAspect := float64(left.NaturalWidth) / float64(left.NaturalHeight)
+	rightAspect := float64(right.NaturalWidth) / float64(right.NaturalHeight)
+	return roughlyComparableRatio(leftAspect, rightAspect, 0.15)
+}
+
+func roughlyComparableRatio(left, right, tolerance float64) bool {
+	if left <= 0 || right <= 0 {
+		return false
+	}
+	delta := math.Abs(left-right) / math.Max(left, right)
+	return delta <= tolerance
+}
+
+func isLegacyImageFormat(mimeType string) bool {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	return strings.Contains(mimeType, "jpeg") || strings.Contains(mimeType, "jpg") || strings.Contains(mimeType, "png")
+}
+
+func isModernImageFormat(mimeType string) bool {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	return strings.Contains(mimeType, "avif") || strings.Contains(mimeType, "webp")
 }
 
 func collectTextLCPResourceCandidates(resources []enrichedResource, limit int) []enrichedResource {
@@ -1511,6 +1820,15 @@ func collectResourceIDs(resources []enrichedResource) []string {
 	return ids
 }
 
+func resourceForID(resources []enrichedResource, id string) *enrichedResource {
+	for index := range resources {
+		if resources[index].ID == id {
+			return &resources[index]
+		}
+	}
+	return nil
+}
+
 func collectTopResourceIDs(resources []enrichedResource, limit int) []string {
 	if len(resources) == 0 || limit <= 0 {
 		return nil
@@ -1636,4 +1954,37 @@ func humanRatio(value float64) string {
 		return "sin datos"
 	}
 	return fmt.Sprintf("%.1fx", value)
+}
+
+func withArticle(label string) string {
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "miniaturas del blog":
+		return "las miniaturas del blog"
+	case "logos de partners":
+		return "los logos de partners"
+	case "banderas":
+		return "las banderas"
+	case "avatares":
+		return "los avatares"
+	case "colección de miniaturas":
+		return "la colección de miniaturas"
+	case "grid de tarjetas":
+		return "el grid de tarjetas"
+	default:
+		return strings.ToLower(strings.TrimSpace(label))
+	}
+}
+
+func boundingWidth(box *BoundingBox) float64 {
+	if box == nil {
+		return 0
+	}
+	return box.Width
+}
+
+func boundingHeight(box *BoundingBox) float64 {
+	if box == nil {
+		return 0
+	}
+	return box.Height
 }

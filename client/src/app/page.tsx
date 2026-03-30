@@ -18,7 +18,6 @@ export default function HomePage() {
         {/* Subtle secondary links, hidden on small screens to keep focus */}
         <div className="hidden sm:flex items-center gap-6 text-xs font-label uppercase tracking-widest text-on-surface-variant/60">
           <a className="hover:text-primary transition-colors" href="#methodology">Metodología</a>
-          <a className="hover:text-primary transition-colors" href="https://github.com/midudev/hackaton-cubepath-2026" target="_blank" rel="noreferrer">Hackathon</a>
         </div>
       </header>
 
@@ -30,7 +29,7 @@ export default function HomePage() {
       <footer className="bg-surface-container-lowest border-t border-outline-variant/10 py-12 mt-auto">
         <div className="flex flex-col md:flex-row justify-between items-center px-8 w-full max-w-7xl mx-auto gap-8">
           <div className="space-y-2 text-center md:text-left">
-            <div className="text-primary font-bold text-lg font-headline">Wattless by CubePath</div>
+            <div className="text-primary font-bold text-lg font-headline">Wattless by Tronchos</div>
             <div className="text-[10px] uppercase tracking-[0.2em] font-label text-on-surface-variant/60">
               © 2026 Digital Biome. Low-carbon audited.
             </div>

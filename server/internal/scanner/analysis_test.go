@@ -355,7 +355,7 @@ func TestBuildRepeatedGalleryFindingAvoidsBelowFoldClaimForMixedGroup(t *testing
 			PositionBand:       "mixed",
 			RelatedResourceIDs: []string{"card-1", "card-2", "card-3"},
 		},
-	}, resources)
+	}, resources, nil)
 
 	if finding == nil {
 		t.Fatal("expected repeated gallery finding")
@@ -370,6 +370,390 @@ func TestBuildRepeatedGalleryFindingAvoidsBelowFoldClaimForMixedGroup(t *testing
 	}
 	if strings.Contains(summary, "no frena el primer render") {
 		t.Fatalf("expected conservative summary, got %q", finding.Summary)
+	}
+}
+
+func TestRepeatedGalleryLabelUsesSemanticPathHintsForBlog(t *testing.T) {
+	label := repeatedGalleryLabel([]enrichedResource{
+		{
+			URL:          "https://example.com/img/blog/post-1.jpg",
+			PositionBand: positionBelowFold,
+			BoundingBox:  &BoundingBox{Width: 288, Height: 114},
+		},
+		{
+			URL:          "https://example.com/img/blog/post-2.avif",
+			PositionBand: positionBelowFold,
+			BoundingBox:  &BoundingBox{Width: 288, Height: 114},
+		},
+		{
+			URL:          "https://example.com/img/blog/post-3.webp",
+			PositionBand: positionBelowFold,
+			BoundingBox:  &BoundingBox{Width: 288, Height: 114},
+		},
+	}, 900)
+
+	if label != "Miniaturas del blog" {
+		t.Fatalf("expected semantic blog label, got %q", label)
+	}
+}
+
+func TestBuildDominantImageFindingDetectsCatastrophicOutlier(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:            "blog-jpeg",
+			URL:           "https://cdn.example.com/img/blog/post-1.jpg",
+			Type:          "image",
+			MIMEType:      "image/jpeg",
+			Bytes:         3_967_443,
+			NaturalWidth:  3024,
+			NaturalHeight: 4032,
+			BoundingBox:   &BoundingBox{X: 90, Y: 4303, Width: 288, Height: 114},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "blog-avif",
+			URL:           "https://cdn.example.com/img/blog/post-2.avif",
+			Type:          "image",
+			MIMEType:      "image/avif",
+			Bytes:         532_665,
+			NaturalWidth:  1964,
+			NaturalHeight: 2455,
+			BoundingBox:   &BoundingBox{X: 400, Y: 4303, Width: 288, Height: 114},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "blog-webp",
+			URL:           "https://cdn.example.com/img/blog/post-3.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Bytes:         179_274,
+			NaturalWidth:  1964,
+			NaturalHeight: 2455,
+			BoundingBox:   &BoundingBox{X: 710, Y: 4303, Width: 288, Height: 114},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+	}
+
+	group := ResourceGroup{
+		ID:                 "group-blog",
+		Kind:               groupKindRepeatedGallery,
+		Label:              "Miniaturas del blog",
+		TotalBytes:         sumBytes(resources),
+		ResourceCount:      len(resources),
+		PositionBand:       positionBelowFold,
+		RelatedResourceIDs: collectResourceIDs(resources),
+	}
+
+	finding := buildDominantImageFinding(resources, []ResourceGroup{group})
+	if finding == nil {
+		t.Fatal("expected dominant image finding")
+	}
+	if finding.ID != "dominant_image_overdelivery" {
+		t.Fatalf("expected dominant image finding id, got %q", finding.ID)
+	}
+	if finding.Severity != "high" {
+		t.Fatalf("expected catastrophic outlier to escalate to high severity, got %q", finding.Severity)
+	}
+	if finding.RelatedResourceIDs[0] != "blog-jpeg" {
+		t.Fatalf("expected dominant jpeg to anchor the finding, got %#v", finding.RelatedResourceIDs)
+	}
+	evidence := strings.Join(finding.Evidence, " ")
+	if !strings.Contains(strings.ToLower(evidence), "formatos legacy y modernos") {
+		t.Fatalf("expected mixed-format evidence, got %#v", finding.Evidence)
+	}
+	if strings.Contains(strings.ToLower(evidence), "variantes modernas mucho más ligeras") {
+		t.Fatalf("expected heterogeneous group to avoid same-variant claim, got %#v", finding.Evidence)
+	}
+	if !strings.Contains(strings.ToLower(finding.Summary), "miniaturas del blog") {
+		t.Fatalf("expected summary to mention semantic group label, got %q", finding.Summary)
+	}
+}
+
+func TestBuildDominantImageFindingRequiresMeasuredRenderedBox(t *testing.T) {
+	finding := buildDominantImageFinding([]enrichedResource{
+		{
+			ID:            "unmapped-jpeg",
+			URL:           "https://cdn.example.com/img/blog/post-1.jpg",
+			Type:          "image",
+			MIMEType:      "image/jpeg",
+			Bytes:         1_800_000,
+			NaturalWidth:  3024,
+			NaturalHeight: 4032,
+		},
+	}, nil)
+
+	if finding != nil {
+		t.Fatalf("expected unmapped image to avoid dominant-image finding, got %#v", finding)
+	}
+}
+
+func TestLegacyAssetOutweighsModernSiblingRequiresComparableVariant(t *testing.T) {
+	candidate := enrichedResource{
+		ID:            "blog-jpeg",
+		URL:           "https://cdn.example.com/img/blog/post-1.jpg?w=800",
+		Type:          "image",
+		MIMEType:      "image/jpeg",
+		Bytes:         3_967_443,
+		NaturalWidth:  3024,
+		NaturalHeight: 4032,
+		BoundingBox:   &BoundingBox{Width: 288, Height: 114},
+	}
+	members := []enrichedResource{
+		candidate,
+		{
+			ID:            "blog-avif",
+			URL:           "https://cdn.example.com/img/blog/post-2.avif?w=800",
+			Type:          "image",
+			MIMEType:      "image/avif",
+			Bytes:         532_665,
+			NaturalWidth:  1964,
+			NaturalHeight: 2455,
+			BoundingBox:   &BoundingBox{Width: 288, Height: 114},
+		},
+	}
+
+	if legacyAssetOutweighsModernSibling(candidate, members) {
+		t.Fatal("expected different images in the same group to avoid same-variant format claim")
+	}
+}
+
+func TestLegacyAssetOutweighsModernSiblingMatchesSameVariant(t *testing.T) {
+	candidate := enrichedResource{
+		ID:            "blog-jpeg",
+		URL:           "https://cdn.example.com/img/blog/post-1.jpg?w=800",
+		Type:          "image",
+		MIMEType:      "image/jpeg",
+		Bytes:         3_967_443,
+		NaturalWidth:  3024,
+		NaturalHeight: 4032,
+		BoundingBox:   &BoundingBox{Width: 288, Height: 114},
+	}
+	members := []enrichedResource{
+		candidate,
+		{
+			ID:            "blog-avif",
+			URL:           "https://cdn.example.com/img/blog/post-1.avif?w=800",
+			Type:          "image",
+			MIMEType:      "image/avif",
+			Bytes:         532_665,
+			NaturalWidth:  3024,
+			NaturalHeight: 4032,
+			BoundingBox:   &BoundingBox{Width: 288, Height: 114},
+		},
+	}
+
+	if !legacyAssetOutweighsModernSibling(candidate, members) {
+		t.Fatal("expected same-image modern variant to be recognized")
+	}
+}
+
+func TestBuildRepeatedGalleryFindingSuppressesDominatedGroupBelowThreshold(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:            "dominant",
+			URL:           "https://cdn.example.com/img/blog/post-1.jpg",
+			Type:          "image",
+			MIMEType:      "image/jpeg",
+			Bytes:         1_000_000,
+			NaturalWidth:  3024,
+			NaturalHeight: 4032,
+			BoundingBox:   &BoundingBox{Width: 288, Height: 114},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "sibling-1",
+			URL:           "https://cdn.example.com/img/blog/post-2.avif",
+			Type:          "image",
+			MIMEType:      "image/avif",
+			Bytes:         140_000,
+			NaturalWidth:  1964,
+			NaturalHeight: 2455,
+			BoundingBox:   &BoundingBox{Width: 288, Height: 114},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "sibling-2",
+			URL:           "https://cdn.example.com/img/blog/post-3.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Bytes:         120_000,
+			NaturalWidth:  1964,
+			NaturalHeight: 2455,
+			BoundingBox:   &BoundingBox{Width: 288, Height: 114},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+	}
+	group := ResourceGroup{
+		ID:                 "group-blog",
+		Kind:               groupKindRepeatedGallery,
+		Label:              "Miniaturas del blog",
+		TotalBytes:         sumBytes(resources),
+		ResourceCount:      len(resources),
+		PositionBand:       positionBelowFold,
+		RelatedResourceIDs: collectResourceIDs(resources),
+	}
+
+	dominant := &AnalysisFinding{
+		ID:                 "dominant_image_overdelivery",
+		RelatedResourceIDs: []string{"dominant"},
+	}
+	if finding := buildRepeatedGalleryFinding([]ResourceGroup{group}, resources, dominant); finding != nil {
+		t.Fatalf("expected dominated gallery below threshold to be suppressed, got %#v", finding)
+	}
+}
+
+func TestBuildThirdPartyFindingsIncludesSocialCluster(t *testing.T) {
+	resources := []enrichedResource{
+		{ID: "social-1", Type: "script", Bytes: 120_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartySocial},
+		{ID: "social-2", Type: "script", Bytes: 110_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartySocial},
+		{ID: "social-3", Type: "script", Bytes: 90_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartySocial},
+		{ID: "social-4", Type: "script", Bytes: 64_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartySocial},
+		{ID: "analytics-1", Type: "script", Bytes: 180_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyAnalytics},
+		{ID: "analytics-2", Type: "script", Bytes: 90_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyAnalytics},
+	}
+	groups := []ResourceGroup{
+		{
+			ID:                 "group-social",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster social",
+			TotalBytes:         384_000,
+			ResourceCount:      11,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"social-1", "social-2", "social-3", "social-4"},
+		},
+		{
+			ID:                 "group-analytics",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster de analítica",
+			TotalBytes:         270_000,
+			ResourceCount:      2,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"analytics-1", "analytics-2"},
+		},
+	}
+
+	findings := buildThirdPartyFindings(resources, groups)
+	if !hasFinding(findings, "third_party_analytics_overhead") {
+		t.Fatalf("expected analytics finding, got %#v", findings)
+	}
+	if !hasFinding(findings, "third_party_social_overhead") {
+		t.Fatalf("expected social finding, got %#v", findings)
+	}
+}
+
+func TestBuildAnalysisPrioritizesDominantImageOutlier(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:            "blog-jpeg",
+			URL:           "https://cdn.example.com/img/blog/post-1.jpg",
+			Type:          "image",
+			MIMEType:      "image/jpeg",
+			Hostname:      "cdn.example.com",
+			Party:         partyFirst,
+			Bytes:         3_967_443,
+			NaturalWidth:  3024,
+			NaturalHeight: 4032,
+			BoundingBox:   &BoundingBox{X: 90, Y: 4303, Width: 288, Height: 114},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "blog-avif",
+			URL:           "https://cdn.example.com/img/blog/post-2.avif",
+			Type:          "image",
+			MIMEType:      "image/avif",
+			Hostname:      "cdn.example.com",
+			Party:         partyFirst,
+			Bytes:         532_665,
+			NaturalWidth:  1964,
+			NaturalHeight: 2455,
+			BoundingBox:   &BoundingBox{X: 400, Y: 4303, Width: 288, Height: 114},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "blog-webp",
+			URL:           "https://cdn.example.com/img/blog/post-3.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "cdn.example.com",
+			Party:         partyFirst,
+			Bytes:         179_274,
+			NaturalWidth:  1964,
+			NaturalHeight: 2455,
+			BoundingBox:   &BoundingBox{X: 710, Y: 4303, Width: 288, Height: 114},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:               "analytics",
+			URL:              "https://www.googletagmanager.com/gtag/js?id=G-123",
+			Type:             "script",
+			MIMEType:         "application/javascript",
+			Hostname:         "www.googletagmanager.com",
+			Party:            partyThird,
+			Bytes:            174_419,
+			IsThirdPartyTool: true,
+			ThirdPartyKind:   thirdPartyAnalytics,
+		},
+		{
+			ID:               "social",
+			URL:              "https://platform.linkedin.com/in.js",
+			Type:             "script",
+			MIMEType:         "application/javascript",
+			Hostname:         "platform.linkedin.com",
+			Party:            partyThird,
+			Bytes:            384_000,
+			IsThirdPartyTool: true,
+			ThirdPartyKind:   thirdPartySocial,
+		},
+	}
+	groups := []ResourceGroup{
+		{
+			ID:                 "group-blog",
+			Kind:               groupKindRepeatedGallery,
+			Label:              "Miniaturas del blog",
+			TotalBytes:         4_679_382,
+			ResourceCount:      3,
+			PositionBand:       positionBelowFold,
+			RelatedResourceIDs: []string{"blog-jpeg", "blog-avif", "blog-webp"},
+		},
+		{
+			ID:                 "group-analytics",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster de analítica",
+			TotalBytes:         174_419,
+			ResourceCount:      5,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"analytics"},
+		},
+		{
+			ID:                 "group-social",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster social",
+			TotalBytes:         384_000,
+			ResourceCount:      11,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"social"},
+		},
+	}
+
+	analysis := buildAnalysis(resources, PerformanceMetrics{
+		LCPMS:           348,
+		LCPResourceTag:  "p",
+		LCPSelectorHint: "p.hero-copy",
+	}, groups)
+	if len(analysis.Findings) == 0 || analysis.Findings[0].ID != "dominant_image_overdelivery" {
+		t.Fatalf("expected dominant image finding to lead, got %#v", analysis.Findings)
+	}
+	if !hasFinding(analysis.Findings, "third_party_social_overhead") {
+		t.Fatalf("expected social cluster finding, got %#v", analysis.Findings)
 	}
 }
 
@@ -520,7 +904,7 @@ func TestRankVampireResourcesPrefersRepeatedGalleryCardOverDeepAvatar(t *testing
 		},
 		{
 			ID:            "avatar",
-			URL:           "https://example.com/teachers/midu.webp",
+			URL:           "https://example.com/teachers/avatar.webp",
 			Type:          "image",
 			MIMEType:      "image/webp",
 			Hostname:      "example.com",
@@ -560,7 +944,7 @@ func TestBuildAnalysisExcludesDeepAssetsFromAboveFoldBytesEvenIfVisibleRatioIsSe
 	resources := []enrichedResource{
 		{
 			ID:            "avatar",
-			URL:           "https://example.com/teachers/midu.webp",
+			URL:           "https://example.com/teachers/avatar.webp",
 			Type:          "image",
 			MIMEType:      "image/webp",
 			Hostname:      "example.com",
@@ -819,7 +1203,7 @@ func TestRankVampireResourcesSkipsLowImpactVisualFiller(t *testing.T) {
 		},
 		{
 			ID:            "avatar",
-			URL:           "https://example.com/teachers/midu.webp",
+			URL:           "https://example.com/teachers/avatar.webp",
 			Type:          "image",
 			MIMEType:      "image/webp",
 			Hostname:      "example.com",
