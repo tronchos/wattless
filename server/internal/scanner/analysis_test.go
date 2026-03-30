@@ -30,7 +30,7 @@ func TestRankVampireResourcesKeepsFailedRequestsWhenTheyTransferBytes(t *testing
 		{ID: "req-2", URL: "https://example.com/app.js", Bytes: 5000, StatusCode: 200, Party: partyFirst, Type: "script"},
 	}
 
-	ranked, warnings := rankVampireResources(resources, 14_000)
+	ranked, warnings := rankVampireResources(resources, nil, 14_000)
 	if len(ranked) != 2 {
 		t.Fatalf("expected 2 ranked resources, got %d", len(ranked))
 	}
@@ -488,8 +488,8 @@ func TestRankVampireResourcesPrefersRepeatedGalleryCardOverDeepAvatar(t *testing
 		},
 	}
 
-	annotated, _ := enrichResourcesForAnalysis(resources, PerformanceMetrics{}, 1440, 900)
-	ranked, _ := rankVampireResources(annotated, sumBytes(annotated))
+	annotated, groups := enrichResourcesForAnalysis(resources, PerformanceMetrics{}, 1440, 900)
+	ranked, _ := rankVampireResources(annotated, groups, sumBytes(annotated))
 	if len(ranked) < 2 {
 		t.Fatalf("expected at least 2 ranked resources, got %d", len(ranked))
 	}
@@ -538,6 +538,205 @@ func TestBuildAnalysisExcludesDeepAssetsFromAboveFoldBytesEvenIfVisibleRatioIsSe
 	}
 }
 
+func TestRankVampireResourcesPromotesVisualDiversityAndCapsClusters(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:           "font-semibold",
+			URL:          "https://example.com/fonts/inter-semibold.woff2",
+			Type:         "font",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        119_000,
+			PositionBand: positionUnknown,
+		},
+		{
+			ID:           "font-bold",
+			URL:          "https://example.com/fonts/inter-bold.woff2",
+			Type:         "font",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        118_000,
+			PositionBand: positionUnknown,
+		},
+		{
+			ID:           "font-medium",
+			URL:          "https://example.com/fonts/inter-medium.woff2",
+			Type:         "font",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        117_000,
+			PositionBand: positionUnknown,
+		},
+		{
+			ID:           "font-regular",
+			URL:          "https://example.com/fonts/inter-regular.woff2",
+			Type:         "font",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        116_000,
+			PositionBand: positionUnknown,
+		},
+		{
+			ID:               "analytics",
+			URL:              "https://us-assets.i.posthog.com/static/posthog-recorder.js",
+			Type:             "script",
+			Hostname:         "us-assets.i.posthog.com",
+			Party:            partyThird,
+			Bytes:            90_000,
+			IsThirdPartyTool: true,
+			ThirdPartyKind:   thirdPartyAnalytics,
+			PositionBand:     positionUnknown,
+		},
+		{
+			ID:            "card-1",
+			URL:           "https://example.com/courses/course-1.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         320_000,
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+			BoundingBox:   &BoundingBox{X: 0, Y: 700, Width: 414, Height: 233},
+			PositionBand:  positionAboveFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "card-2",
+			URL:           "https://example.com/courses/course-2.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         300_000,
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+			BoundingBox:   &BoundingBox{X: 420, Y: 950, Width: 414, Height: 233},
+			PositionBand:  positionNearFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "card-3",
+			URL:           "https://example.com/courses/course-3.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         290_000,
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+			BoundingBox:   &BoundingBox{X: 840, Y: 1200, Width: 414, Height: 233},
+			PositionBand:  positionNearFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "hero",
+			URL:           "https://example.com/hero.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         180_000,
+			NaturalWidth:  1280,
+			NaturalHeight: 720,
+			BoundingBox:   &BoundingBox{X: 0, Y: 0, Width: 960, Height: 420},
+			PositionBand:  positionAboveFold,
+			VisualRole:    visualRoleHeroMedia,
+		},
+	}
+
+	groups := []ResourceGroup{
+		{
+			ID:                 "group-cards",
+			Kind:               groupKindRepeatedGallery,
+			Label:              "Grid de tarjetas",
+			TotalBytes:         910_000,
+			ResourceCount:      3,
+			PositionBand:       "mixed",
+			RelatedResourceIDs: []string{"card-1", "card-2", "card-3"},
+		},
+		{
+			ID:                 "group-fonts",
+			Kind:               groupKindFontCluster,
+			Label:              "Stack tipográfico",
+			TotalBytes:         470_000,
+			ResourceCount:      4,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"font-semibold", "font-bold", "font-medium", "font-regular"},
+		},
+		{
+			ID:                 "group-analytics",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster de analítica",
+			TotalBytes:         90_000,
+			ResourceCount:      1,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"analytics"},
+		},
+	}
+
+	ranked, warnings := rankVampireResources(resources, groups, sumBytes(resources))
+	if len(ranked) != 5 {
+		t.Fatalf("expected 5 ranked resources, got %d", len(ranked))
+	}
+
+	visualCount := countVisualResources(ranked)
+	if visualCount < 2 {
+		t.Fatalf("expected at least 2 visually mapped vampires, got %d (%#v)", visualCount, ranked)
+	}
+
+	fontCount := 0
+	analyticsCount := 0
+	repeatedCards := 0
+	for _, resource := range ranked {
+		if resource.Type == "font" {
+			fontCount++
+		}
+		if resource.IsThirdPartyTool && resource.ThirdPartyKind == thirdPartyAnalytics {
+			analyticsCount++
+		}
+		if resource.VisualRole == visualRoleRepeatedCard {
+			repeatedCards++
+		}
+	}
+	if fontCount > 1 {
+		t.Fatalf("expected font cluster to be capped at 1 representative, got %d (%#v)", fontCount, ranked)
+	}
+	if analyticsCount > 1 {
+		t.Fatalf("expected analytics cluster to be capped at 1 representative, got %d (%#v)", analyticsCount, ranked)
+	}
+	if repeatedCards < 1 {
+		t.Fatalf("expected at least one repeated card vampire, got %#v", ranked)
+	}
+	if containsWarning(warnings, "The heaviest resources could not be mapped to visible DOM boxes.") {
+		t.Fatalf("did not expect unmapped warning when visual candidates exist, got %#v", warnings)
+	}
+}
+
+func TestRankVampireResourcesWarnsWhenNoVisualCandidatesExist(t *testing.T) {
+	resources := []enrichedResource{
+		{ID: "font-1", URL: "https://example.com/font-1.woff2", Type: "font", Party: partyFirst, Bytes: 100_000},
+		{ID: "font-2", URL: "https://example.com/font-2.woff2", Type: "font", Party: partyFirst, Bytes: 90_000},
+		{
+			ID:               "analytics",
+			URL:              "https://us-assets.i.posthog.com/static/posthog.js",
+			Type:             "script",
+			Party:            partyThird,
+			Bytes:            80_000,
+			IsThirdPartyTool: true,
+			ThirdPartyKind:   thirdPartyAnalytics,
+		},
+	}
+
+	ranked, warnings := rankVampireResources(resources, nil, sumBytes(resources))
+	if len(ranked) == 0 {
+		t.Fatal("expected ranked resources")
+	}
+	if !containsWarning(warnings, "The heaviest resources could not be mapped to visible DOM boxes.") {
+		t.Fatalf("expected unmapped warning, got %#v", warnings)
+	}
+}
+
 func TestBuildResponsiveImageFindingAvoidsCallingResponsiveMarkupNonResponsive(t *testing.T) {
 	finding := buildResponsiveImageFinding([]enrichedResource{
 		{
@@ -579,4 +778,13 @@ func findFinding(findings []AnalysisFinding, id string) *AnalysisFinding {
 		}
 	}
 	return nil
+}
+
+func containsWarning(warnings []string, target string) bool {
+	for _, warning := range warnings {
+		if warning == target {
+			return true
+		}
+	}
+	return false
 }

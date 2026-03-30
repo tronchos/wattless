@@ -197,3 +197,63 @@ func TestBuildRuleBasedAssetInsightDoesNotAttachUnanchoredCPUActionToScript(t *t
 		t.Fatal("expected script without exact anchor to avoid inherited CPU fix")
 	}
 }
+
+func TestBuildRuleBasedAssetInsightPrefersAnalyticsFindingForAnalyticsScript(t *testing.T) {
+	draft := BuildRuleBasedAssetInsight(
+		ResourceContext{
+			ID:               "posthog",
+			Type:             "script",
+			URL:              "https://us-assets.i.posthog.com/static/posthog-recorder.js",
+			IsThirdPartyTool: true,
+			ThirdPartyKind:   "analytics",
+		},
+		[]AnalysisFindingContext{
+			{
+				ID:                 "main_thread_cpu_pressure",
+				Category:           "cpu",
+				Severity:           "medium",
+				Confidence:         "high",
+				Title:              "Reduce la presión real sobre la hebra principal",
+				Summary:            "Hay Long Tasks de arranque.",
+				RelatedResourceIDs: []string{"posthog"},
+			},
+			{
+				ID:                 "third_party_analytics_overhead",
+				Category:           "third_party",
+				Severity:           "medium",
+				Confidence:         "high",
+				Title:              "Recorta la sobrecarga de analítica",
+				Summary:            "La capa de analítica añade ruido de red.",
+				RelatedResourceIDs: []string{"posthog"},
+			},
+		},
+		[]TopAction{
+			{
+				ID:                 "act-cpu",
+				RelatedFindingID:   "main_thread_cpu_pressure",
+				RelatedResourceIDs: []string{"posthog"},
+				Reason:             "Difiere el JS costoso.",
+				Confidence:         "high",
+				LikelyLCPImpact:    "medium",
+			},
+			{
+				ID:                 "act-analytics",
+				RelatedFindingID:   "third_party_analytics_overhead",
+				RelatedResourceIDs: []string{"posthog"},
+				Reason:             "Retrasa la analítica hasta interacción.",
+				Confidence:         "high",
+				LikelyLCPImpact:    "low",
+			},
+		},
+	)
+
+	if draft.RelatedFindingID != "third_party_analytics_overhead" {
+		t.Fatalf("expected analytics finding to win for analytics script, got %q", draft.RelatedFindingID)
+	}
+	if draft.RelatedActionID != "act-analytics" {
+		t.Fatalf("expected analytics action to match the chosen finding, got %q", draft.RelatedActionID)
+	}
+	if draft.Title != "Recorta la sobrecarga de analítica" {
+		t.Fatalf("expected analytics title, got %q", draft.Title)
+	}
+}

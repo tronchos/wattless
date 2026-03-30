@@ -104,7 +104,7 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 		totalBytes += resource.Bytes
 	}
 
-	top, rankingWarnings := rankVampireResources(resources, totalBytes)
+	top, rankingWarnings := rankVampireResources(resources, resourceGroups, totalBytes)
 	warnings = append(warnings, rankingWarnings...)
 
 	vampires := make([]ResourceSummary, 0, len(top))

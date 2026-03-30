@@ -1053,28 +1053,105 @@ func buildSummary(resources []enrichedResource, totalBytes int64, potentialSavin
 	return summary
 }
 
-func rankVampireResources(resources []enrichedResource, totalBytes int64) ([]enrichedResource, []string) {
-	candidates := append([]enrichedResource(nil), resources...)
-
-	sort.Slice(candidates, func(i, j int) bool {
-		leftPriority := vampirePriority(candidates[i])
-		rightPriority := vampirePriority(candidates[j])
-		if leftPriority == rightPriority {
-			leftSavings := estimateResourceSavings(candidates[i])
-			rightSavings := estimateResourceSavings(candidates[j])
-			if leftSavings == rightSavings {
-				if candidates[i].Bytes == candidates[j].Bytes {
-					return candidates[i].ID < candidates[j].ID
-				}
-				return candidates[i].Bytes > candidates[j].Bytes
-			}
-			return leftSavings > rightSavings
-		}
-		return leftPriority > rightPriority
+func rankVampireResources(resources []enrichedResource, groups []ResourceGroup, totalBytes int64) ([]enrichedResource, []string) {
+	sorted := append([]enrichedResource(nil), resources...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return vampireRankLess(sorted[i], sorted[j])
 	})
 
-	if len(candidates) > 5 {
-		candidates = candidates[:5]
+	resourceByID := make(map[string]enrichedResource, len(resources))
+	rankIndex := make(map[string]int, len(sorted))
+	for index, resource := range sorted {
+		resourceByID[resource.ID] = resource
+		rankIndex[resource.ID] = index
+	}
+
+	groupRefsByResourceID := buildVampireGroupRefs(groups)
+	selected := make([]enrichedResource, 0, 5)
+	selectedIDs := make(map[string]struct{}, 5)
+	selectedGroupCounts := make(map[string]int, len(groups))
+	seededIDs := make(map[string]struct{}, 3)
+
+	addSelected := func(resource enrichedResource) bool {
+		if _, ok := selectedIDs[resource.ID]; ok {
+			return false
+		}
+		if !canSelectVampire(resource, groupRefsByResourceID, selectedGroupCounts) {
+			return false
+		}
+		selected = append(selected, resource)
+		selectedIDs[resource.ID] = struct{}{}
+		incrementSelectedGroupCounts(resource, groupRefsByResourceID, selectedGroupCounts)
+		return true
+	}
+
+	seedRepresentative := func(resource *enrichedResource) {
+		if resource == nil {
+			return
+		}
+		if addSelected(*resource) {
+			seededIDs[resource.ID] = struct{}{}
+		}
+	}
+
+	seedRepresentative(selectRepeatedGalleryRepresentative(dominantGroupByKind(groups, groupKindRepeatedGallery), sorted))
+	seedRepresentative(selectHighestBytesGroupMember(dominantGroupByKind(groups, groupKindFontCluster), sorted, resourceByID, nil))
+	seedRepresentative(selectHighestBytesGroupMember(dominantAnalyticsGroup(groups, resourceByID), sorted, resourceByID, func(resource enrichedResource) bool {
+		return resource.IsThirdPartyTool && resource.ThirdPartyKind == thirdPartyAnalytics
+	}))
+
+	for _, resource := range sorted {
+		if len(selected) >= 5 {
+			break
+		}
+		addSelected(resource)
+	}
+
+	desiredVisualCount := minInt(2, countVisualResources(sorted))
+	for countVisualResources(selected) < desiredVisualCount {
+		replaced := false
+		for _, visual := range sorted {
+			if visual.BoundingBox == nil {
+				continue
+			}
+			if _, ok := selectedIDs[visual.ID]; ok {
+				continue
+			}
+
+			removeIndex := worstSelectedIndex(selected, rankIndex, seededIDs, true)
+			if removeIndex < 0 {
+				removeIndex = worstSelectedIndex(selected, rankIndex, nil, true)
+			}
+			if removeIndex < 0 {
+				break
+			}
+
+			removed := selected[removeIndex]
+			decrementSelectedGroupCounts(removed, groupRefsByResourceID, selectedGroupCounts)
+			delete(selectedIDs, removed.ID)
+
+			if !canSelectVampire(visual, groupRefsByResourceID, selectedGroupCounts) {
+				selectedIDs[removed.ID] = struct{}{}
+				incrementSelectedGroupCounts(removed, groupRefsByResourceID, selectedGroupCounts)
+				continue
+			}
+
+			selected[removeIndex] = visual
+			selectedIDs[visual.ID] = struct{}{}
+			incrementSelectedGroupCounts(visual, groupRefsByResourceID, selectedGroupCounts)
+			replaced = true
+			break
+		}
+		if !replaced {
+			break
+		}
+	}
+
+	sort.Slice(selected, func(i, j int) bool {
+		return vampireRankLess(selected[i], selected[j])
+	})
+	if len(selected) > 5 {
+		selected = selected[:5]
 	}
 
 	warnings := []string{}
@@ -1085,7 +1162,7 @@ func rankVampireResources(resources []enrichedResource, totalBytes int64) ([]enr
 			failedRequests++
 		}
 	}
-	for _, resource := range candidates {
+	for _, resource := range selected {
 		if resourceFailed(resource) {
 			failedRanked++
 		}
@@ -1107,17 +1184,15 @@ func rankVampireResources(resources []enrichedResource, totalBytes int64) ([]enr
 		warnings = append(warnings, fmt.Sprintf("Third-party resources account for %.1f%% of transferred bytes.", share))
 	}
 
-	visualMapped := 0
-	for _, resource := range candidates {
-		if resource.BoundingBox != nil {
-			visualMapped++
-		}
-	}
-	if visualMapped == 0 && len(candidates) > 0 {
+	visualCandidates := countVisualResources(sorted)
+	visualMapped := countVisualResources(selected)
+	if visualCandidates == 0 && len(selected) > 0 {
 		warnings = append(warnings, "The heaviest resources could not be mapped to visible DOM boxes.")
+	} else if visualCandidates > 0 && visualMapped == 0 {
+		warnings = append(warnings, "The vampire ranking is dominated by non-visual resources; visual anchors are limited in the overlay.")
 	}
 
-	return candidates, warnings
+	return selected, warnings
 }
 
 func vampirePriority(resource enrichedResource) int {
@@ -1146,6 +1221,199 @@ func vampirePriority(resource enrichedResource) int {
 	}
 
 	return priority
+}
+
+func vampireRankLess(left, right enrichedResource) bool {
+	leftPriority := vampirePriority(left)
+	rightPriority := vampirePriority(right)
+	if leftPriority == rightPriority {
+		leftSavings := estimateResourceSavings(left)
+		rightSavings := estimateResourceSavings(right)
+		if leftSavings == rightSavings {
+			if left.Bytes == right.Bytes {
+				return left.ID < right.ID
+			}
+			return left.Bytes > right.Bytes
+		}
+		return leftSavings > rightSavings
+	}
+	return leftPriority > rightPriority
+}
+
+type vampireGroupRef struct {
+	ID   string
+	Kind string
+}
+
+func buildVampireGroupRefs(groups []ResourceGroup) map[string][]vampireGroupRef {
+	refsByResourceID := make(map[string][]vampireGroupRef)
+	for _, group := range groups {
+		ref := vampireGroupRef{ID: group.ID, Kind: group.Kind}
+		for _, resourceID := range group.RelatedResourceIDs {
+			refsByResourceID[resourceID] = append(refsByResourceID[resourceID], ref)
+		}
+	}
+	return refsByResourceID
+}
+
+func dominantGroupByKind(groups []ResourceGroup, kind string) *ResourceGroup {
+	var candidate *ResourceGroup
+	for index := range groups {
+		group := &groups[index]
+		if group.Kind != kind {
+			continue
+		}
+		if candidate == nil || group.TotalBytes > candidate.TotalBytes {
+			candidate = group
+		}
+	}
+	return candidate
+}
+
+func dominantAnalyticsGroup(groups []ResourceGroup, resourcesByID map[string]enrichedResource) *ResourceGroup {
+	var candidate *ResourceGroup
+	for index := range groups {
+		group := &groups[index]
+		if group.Kind != groupKindThirdParty {
+			continue
+		}
+		hasAnalytics := false
+		for _, resourceID := range group.RelatedResourceIDs {
+			resource, ok := resourcesByID[resourceID]
+			if ok && resource.IsThirdPartyTool && resource.ThirdPartyKind == thirdPartyAnalytics {
+				hasAnalytics = true
+				break
+			}
+		}
+		if !hasAnalytics {
+			continue
+		}
+		if candidate == nil || group.TotalBytes > candidate.TotalBytes {
+			candidate = group
+		}
+	}
+	return candidate
+}
+
+func selectRepeatedGalleryRepresentative(group *ResourceGroup, sorted []enrichedResource) *enrichedResource {
+	if group == nil {
+		return nil
+	}
+	ids := make(map[string]struct{}, len(group.RelatedResourceIDs))
+	for _, resourceID := range group.RelatedResourceIDs {
+		ids[resourceID] = struct{}{}
+	}
+	for _, resource := range sorted {
+		if _, ok := ids[resource.ID]; !ok {
+			continue
+		}
+		if resource.BoundingBox != nil {
+			candidate := resource
+			return &candidate
+		}
+	}
+	for _, resource := range sorted {
+		if _, ok := ids[resource.ID]; ok {
+			candidate := resource
+			return &candidate
+		}
+	}
+	return nil
+}
+
+func selectHighestBytesGroupMember(group *ResourceGroup, sorted []enrichedResource, resourcesByID map[string]enrichedResource, predicate func(enrichedResource) bool) *enrichedResource {
+	if group == nil {
+		return nil
+	}
+
+	rankIndex := make(map[string]int, len(sorted))
+	for index, resource := range sorted {
+		rankIndex[resource.ID] = index
+	}
+
+	var candidate *enrichedResource
+	for _, resourceID := range group.RelatedResourceIDs {
+		resource, ok := resourcesByID[resourceID]
+		if !ok {
+			continue
+		}
+		if predicate != nil && !predicate(resource) {
+			continue
+		}
+		if candidate == nil || resource.Bytes > candidate.Bytes || (resource.Bytes == candidate.Bytes && rankIndex[resource.ID] < rankIndex[candidate.ID]) {
+			copy := resource
+			candidate = &copy
+		}
+	}
+	return candidate
+}
+
+func canSelectVampire(resource enrichedResource, groupRefsByResourceID map[string][]vampireGroupRef, selectedGroupCounts map[string]int) bool {
+	for _, ref := range groupRefsByResourceID[resource.ID] {
+		cap := vampireGroupCap(ref.Kind)
+		if cap > 0 && selectedGroupCounts[ref.ID] >= cap {
+			return false
+		}
+	}
+	return true
+}
+
+func incrementSelectedGroupCounts(resource enrichedResource, groupRefsByResourceID map[string][]vampireGroupRef, selectedGroupCounts map[string]int) {
+	for _, ref := range groupRefsByResourceID[resource.ID] {
+		selectedGroupCounts[ref.ID]++
+	}
+}
+
+func decrementSelectedGroupCounts(resource enrichedResource, groupRefsByResourceID map[string][]vampireGroupRef, selectedGroupCounts map[string]int) {
+	for _, ref := range groupRefsByResourceID[resource.ID] {
+		if selectedGroupCounts[ref.ID] <= 1 {
+			delete(selectedGroupCounts, ref.ID)
+			continue
+		}
+		selectedGroupCounts[ref.ID]--
+	}
+}
+
+func vampireGroupCap(kind string) int {
+	switch kind {
+	case groupKindRepeatedGallery:
+		return 2
+	case groupKindFontCluster, groupKindThirdParty:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func countVisualResources(resources []enrichedResource) int {
+	count := 0
+	for _, resource := range resources {
+		if resource.BoundingBox != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func worstSelectedIndex(selected []enrichedResource, rankIndex map[string]int, protectedIDs map[string]struct{}, nonVisualOnly bool) int {
+	worstIndex := -1
+	worstRank := -1
+	for index, resource := range selected {
+		if nonVisualOnly && resource.BoundingBox != nil {
+			continue
+		}
+		if protectedIDs != nil {
+			if _, ok := protectedIDs[resource.ID]; ok {
+				continue
+			}
+		}
+		resourceRank := rankIndex[resource.ID]
+		if resourceRank > worstRank {
+			worstRank = resourceRank
+			worstIndex = index
+		}
+	}
+	return worstIndex
 }
 
 func shareOf(bytes, totalBytes int64) float64 {

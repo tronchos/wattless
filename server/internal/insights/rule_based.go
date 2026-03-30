@@ -341,7 +341,7 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 	for index := range findings {
 		finding := &findings[index]
 		if containsString(finding.RelatedResourceIDs, asset.ID) {
-			if best == nil || findingBetter(*finding, *best) {
+			if best == nil || findingPreferredForAsset(asset, *finding, *best) {
 				best = finding
 			}
 		}
@@ -375,6 +375,13 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 }
 
 func matchAssetAction(asset ResourceContext, actions []TopAction, finding *AnalysisFindingContext) *TopAction {
+	if finding != nil {
+		for index := range actions {
+			if containsString(actions[index].RelatedResourceIDs, asset.ID) && actions[index].RelatedFindingID == finding.ID {
+				return &actions[index]
+			}
+		}
+	}
 	for index := range actions {
 		if containsString(actions[index].RelatedResourceIDs, asset.ID) {
 			return &actions[index]
@@ -382,6 +389,28 @@ func matchAssetAction(asset ResourceContext, actions []TopAction, finding *Analy
 	}
 	_ = finding
 	return nil
+}
+
+func findingPreferredForAsset(asset ResourceContext, left, right AnalysisFindingContext) bool {
+	leftScore := assetFindingPreferenceScore(asset, left)
+	rightScore := assetFindingPreferenceScore(asset, right)
+	if leftScore == rightScore {
+		return findingBetter(left, right)
+	}
+	return leftScore > rightScore
+}
+
+func assetFindingPreferenceScore(asset ResourceContext, finding AnalysisFindingContext) int {
+	switch {
+	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics" && finding.ID == "third_party_analytics_overhead":
+		return 3
+	case asset.Type == "font" && finding.ID == "font_stack_overweight":
+		return 3
+	case asset.VisualRole == "repeated_card_media" && finding.ID == "repeated_gallery_overdelivery":
+		return 3
+	default:
+		return 0
+	}
 }
 
 func findingBetter(left, right AnalysisFindingContext) bool {
