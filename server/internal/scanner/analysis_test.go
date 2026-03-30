@@ -30,7 +30,7 @@ func TestRankVampireResourcesKeepsFailedRequestsWhenTheyTransferBytes(t *testing
 		{ID: "req-2", URL: "https://example.com/app.js", Bytes: 5000, StatusCode: 200, Party: partyFirst, Type: "script"},
 	}
 
-	ranked, warnings := rankVampireResources(resources, nil, 14_000)
+	ranked, warnings := rankVampireResources(resources, nil, nil, 14_000)
 	if len(ranked) != 2 {
 		t.Fatalf("expected 2 ranked resources, got %d", len(ranked))
 	}
@@ -397,6 +397,42 @@ func TestRepeatedGalleryLabelUsesSemanticPathHintsForBlog(t *testing.T) {
 	}
 }
 
+func TestRepeatedGalleryLabelUsesSemanticPathHintsForSponsors(t *testing.T) {
+	label := repeatedGalleryLabel([]enrichedResource{
+		{
+			URL:          "https://example.com/sponsors/acme.webp",
+			PositionBand: positionBelowFold,
+			BoundingBox:  &BoundingBox{Width: 260, Height: 48},
+		},
+		{
+			URL:          "https://example.com/sponsors/contoso.webp",
+			PositionBand: positionBelowFold,
+			BoundingBox:  &BoundingBox{Width: 260, Height: 48},
+		},
+	}, 900)
+
+	if label != "Logos de sponsors" {
+		t.Fatalf("expected sponsor label, got %q", label)
+	}
+}
+
+func TestRepeatedGalleryLabelFallsBackToSpeakerGalleryByStructure(t *testing.T) {
+	resources := []enrichedResource{
+		{URL: "https://example.com/img/ana-garcia.webp", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{URL: "https://example.com/img/luis-perez.webp", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{URL: "https://example.com/img/maria-lopez.webp", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{URL: "https://example.com/img/carla-ruiz.webp", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{URL: "https://example.com/img/julio-gomez.webp", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{URL: "https://example.com/img/sofia-vargas.webp", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{URL: "https://example.com/img/pablo-arias.webp", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{URL: "https://example.com/img/nora-fuentes.webp", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+	}
+
+	if label := repeatedGalleryLabel(resources, 900); label != "Fotos de speakers" {
+		t.Fatalf("expected structural speaker label, got %q", label)
+	}
+}
+
 func TestBuildDominantImageFindingDetectsCatastrophicOutlier(t *testing.T) {
 	resources := []enrichedResource{
 		{
@@ -644,6 +680,74 @@ func TestBuildThirdPartyFindingsIncludesSocialCluster(t *testing.T) {
 	}
 	if !hasFinding(findings, "third_party_social_overhead") {
 		t.Fatalf("expected social finding, got %#v", findings)
+	}
+}
+
+func TestBuildThirdPartyFindingsIncludePaymentAndVideoClusters(t *testing.T) {
+	resources := []enrichedResource{
+		{ID: "payment-1", Type: "script", Bytes: 120_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyPayment},
+		{ID: "payment-2", Type: "script", Bytes: 100_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyPayment},
+		{ID: "video-1", Type: "script", Bytes: 170_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyVideo},
+		{ID: "video-2", Type: "image", Bytes: 120_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyVideo},
+	}
+	groups := []ResourceGroup{
+		{
+			ID:                 "group-payment",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster de pagos",
+			TotalBytes:         220_000,
+			ResourceCount:      7,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"payment-1", "payment-2"},
+		},
+		{
+			ID:                 "group-video",
+			Kind:               groupKindThirdParty,
+			Label:              "Embeds de video",
+			TotalBytes:         290_000,
+			ResourceCount:      4,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"video-1", "video-2"},
+		},
+	}
+
+	findings := buildThirdPartyFindings(resources, groups)
+	if !hasFinding(findings, "third_party_payment_overhead") {
+		t.Fatalf("expected payment finding, got %#v", findings)
+	}
+	if !hasFinding(findings, "third_party_video_overhead") {
+		t.Fatalf("expected video finding, got %#v", findings)
+	}
+}
+
+func TestBuildRepeatedGalleryFindingNotesLazyMajority(t *testing.T) {
+	resources := []enrichedResource{
+		{ID: "speaker-1", Type: "image", Bytes: 120_000, MIMEType: "image/webp", NaturalWidth: 800, NaturalHeight: 800, LoadingAttr: "lazy", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{ID: "speaker-2", Type: "image", Bytes: 118_000, MIMEType: "image/webp", NaturalWidth: 800, NaturalHeight: 800, LoadingAttr: "lazy", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{ID: "speaker-3", Type: "image", Bytes: 116_000, MIMEType: "image/webp", NaturalWidth: 800, NaturalHeight: 800, LoadingAttr: "lazy", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+		{ID: "speaker-4", Type: "image", Bytes: 114_000, MIMEType: "image/webp", NaturalWidth: 800, NaturalHeight: 800, LoadingAttr: "lazy", BoundingBox: &BoundingBox{Width: 284, Height: 300}},
+	}
+
+	finding := buildRepeatedGalleryFinding([]ResourceGroup{
+		{
+			ID:                 "group-speakers",
+			Kind:               groupKindRepeatedGallery,
+			Label:              "Fotos de speakers",
+			TotalBytes:         468_000,
+			ResourceCount:      4,
+			PositionBand:       positionBelowFold,
+			RelatedResourceIDs: []string{"speaker-1", "speaker-2", "speaker-3", "speaker-4"},
+		},
+	}, resources, nil)
+
+	if finding == nil {
+		t.Fatal("expected repeated gallery finding")
+	}
+	if !strings.Contains(strings.ToLower(finding.Summary), "ya usan lazy loading") {
+		t.Fatalf("expected lazy-majority summary, got %q", finding.Summary)
+	}
+	if !strings.Contains(strings.Join(finding.Evidence, " "), `Lazy loading ya presente en la mayoría`) {
+		t.Fatalf("expected lazy-majority evidence, got %#v", finding.Evidence)
 	}
 }
 
@@ -918,7 +1022,7 @@ func TestRankVampireResourcesPrefersRepeatedGalleryCardOverDeepAvatar(t *testing
 	}
 
 	annotated, groups := enrichResourcesForAnalysis(resources, PerformanceMetrics{}, 1440, 900)
-	ranked, _ := rankVampireResources(annotated, groups, sumBytes(annotated))
+	ranked, _ := rankVampireResources(annotated, groups, nil, sumBytes(annotated))
 	if len(ranked) < 2 {
 		t.Fatalf("expected at least 2 ranked resources, got %d", len(ranked))
 	}
@@ -1104,7 +1208,7 @@ func TestRankVampireResourcesPromotesVisualDiversityAndCapsClusters(t *testing.T
 		},
 	}
 
-	ranked, warnings := rankVampireResources(resources, groups, sumBytes(resources))
+	ranked, warnings := rankVampireResources(resources, groups, nil, sumBytes(resources))
 	if len(ranked) != 5 {
 		t.Fatalf("expected 5 ranked resources, got %d", len(ranked))
 	}
@@ -1247,7 +1351,7 @@ func TestRankVampireResourcesSkipsLowImpactVisualFiller(t *testing.T) {
 		},
 	}
 
-	ranked, _ := rankVampireResources(resources, groups, sumBytes(resources))
+	ranked, _ := rankVampireResources(resources, groups, nil, sumBytes(resources))
 	if len(ranked) != 4 {
 		t.Fatalf("expected low-impact filler to be skipped, got %d vampires (%#v)", len(ranked), ranked)
 	}
@@ -1255,6 +1359,100 @@ func TestRankVampireResourcesSkipsLowImpactVisualFiller(t *testing.T) {
 		if resource.ID == "avatar" {
 			t.Fatalf("expected low-impact avatar to stay out of vampires, got %#v", ranked)
 		}
+	}
+}
+
+func TestRankVampireResourcesPromotesVisibleResponsiveAnchor(t *testing.T) {
+	resources := []enrichedResource{
+		{ID: "font", URL: "https://example.com/fonts/inter.woff2", Type: "font", Party: partyFirst, Bytes: 150_000, PositionBand: positionUnknown},
+		{ID: "analytics", URL: "https://www.googletagmanager.com/gtag/js?id=G-123", Type: "script", Party: partyThird, Bytes: 95_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyAnalytics, PositionBand: positionUnknown},
+		{ID: "hero", URL: "https://example.com/hero.webp", Type: "image", MIMEType: "image/webp", Party: partyFirst, Bytes: 220_000, NaturalWidth: 1920, NaturalHeight: 1080, BoundingBox: &BoundingBox{X: 0, Y: 0, Width: 960, Height: 420}, PositionBand: positionAboveFold, VisualRole: visualRoleHeroMedia},
+		{ID: "card-1", URL: "https://example.com/speakers/ana.webp", Type: "image", MIMEType: "image/webp", Party: partyFirst, Bytes: 130_000, NaturalWidth: 768, NaturalHeight: 1024, BoundingBox: &BoundingBox{X: 0, Y: 2200, Width: 284, Height: 300}, PositionBand: positionBelowFold, VisualRole: visualRoleRepeatedCard},
+		{ID: "card-2", URL: "https://example.com/speakers/luis.webp", Type: "image", MIMEType: "image/webp", Party: partyFirst, Bytes: 125_000, NaturalWidth: 768, NaturalHeight: 1024, BoundingBox: &BoundingBox{X: 320, Y: 2200, Width: 284, Height: 300}, PositionBand: positionBelowFold, VisualRole: visualRoleRepeatedCard},
+		{ID: "venue", URL: "https://example.com/img/venue.webp", Type: "image", MIMEType: "image/webp", Party: partyFirst, Bytes: 282_000, NaturalWidth: 2348, NaturalHeight: 1203, BoundingBox: &BoundingBox{X: 90, Y: 1200, Width: 596, Height: 396}, PositionBand: positionNearFold, VisualRole: visualRoleBelowFoldMedia},
+	}
+	groups := []ResourceGroup{
+		{
+			ID:                 "group-speakers",
+			Kind:               groupKindRepeatedGallery,
+			Label:              "Fotos de speakers",
+			TotalBytes:         255_000,
+			ResourceCount:      2,
+			PositionBand:       positionBelowFold,
+			RelatedResourceIDs: []string{"card-1", "card-2"},
+		},
+		{
+			ID:                 "group-fonts",
+			Kind:               groupKindFontCluster,
+			Label:              "Stack tipográfico",
+			TotalBytes:         150_000,
+			ResourceCount:      1,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"font"},
+		},
+		{
+			ID:                 "group-analytics",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster de analítica",
+			TotalBytes:         95_000,
+			ResourceCount:      1,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"analytics"},
+		},
+	}
+	findings := []AnalysisFinding{
+		{
+			ID:                 "responsive_image_overdelivery",
+			Category:           "media",
+			Severity:           "medium",
+			Confidence:         "high",
+			RelatedResourceIDs: []string{"venue"},
+		},
+	}
+
+	ranked, _ := rankVampireResources(resources, groups, findings, sumBytes(resources))
+	if len(ranked) == 0 {
+		t.Fatal("expected ranked vampires")
+	}
+	foundVenue := false
+	for _, resource := range ranked {
+		if resource.ID == "venue" {
+			foundVenue = true
+			break
+		}
+	}
+	if !foundVenue {
+		t.Fatalf("expected visible responsive-image anchor to be promoted, got %#v", ranked)
+	}
+}
+
+func TestBuildFontFindingDetectsIconFontDominance(t *testing.T) {
+	finding := buildFontFinding([]enrichedResource{
+		{
+			ID:    "fa-solid",
+			URL:   "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/webfonts/fa-solid-900.woff2",
+			Type:  "font",
+			Bytes: 150_000,
+		},
+		{
+			ID:    "brand",
+			URL:   "https://example.com/fonts/brand.woff2",
+			Type:  "font",
+			Bytes: 120_000,
+		},
+	}, AnalysisSummary{
+		FontBytes:    270_000,
+		FontRequests: 2,
+	})
+
+	if finding == nil {
+		t.Fatal("expected font finding")
+	}
+	if finding.Title != "Recorta el coste de la fuente de iconos" {
+		t.Fatalf("expected icon-font title, got %q", finding.Title)
+	}
+	if !strings.Contains(strings.ToLower(finding.Summary), "svgs individuales") {
+		t.Fatalf("expected icon-font summary, got %q", finding.Summary)
 	}
 }
 
@@ -1273,7 +1471,7 @@ func TestRankVampireResourcesWarnsWhenNoVisualCandidatesExist(t *testing.T) {
 		},
 	}
 
-	ranked, warnings := rankVampireResources(resources, nil, sumBytes(resources))
+	ranked, warnings := rankVampireResources(resources, nil, nil, sumBytes(resources))
 	if len(ranked) == 0 {
 		t.Fatal("expected ranked resources")
 	}

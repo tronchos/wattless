@@ -97,16 +97,19 @@ Reglas:
 - Si el fix es demasiado genérico o no es seguro, omite recommended_fix en el asset.
 - Prioriza findings, no bytes crudos aislados.
 - Si existe dominant_image_overdelivery, priorízalo por encima del finding grupal más genérico.
+- Si existe third_party_payment_overhead o third_party_video_overhead, trátalos como findings distintos de analytics/social y usa copy específico para ticketing/pago o video.
 - No llames hero image a un recurso salvo que su visual_role sea hero_media o lcp_candidate.
 - No digas below the fold salvo que la evidencia de posición lo soporte.
 - Distingue claramente entre carga inicial y below-the-fold.
 - Si el LCP observado corresponde a un nodo del DOM sin asset asociado, habla de CSS, tipografía o CPU antes que de imágenes.
+- Si above_fold_bytes es 0 pero render_critical_bytes es mayor que 0 y existe render_lcp_dom_node, explica que el primer render es textual/estilado y no sugieras que el above-the-fold esté vacío.
 - Usa el campo confidence para no sobreafirmar.
 - No interpretes script_resource_duration_ms como bloqueo real; usa long_tasks_total_ms para hablar de presión de CPU.
 - El campo 'recommended_fix' debe incluirse obligatoriamente en al menos la primera top action (el cuello de botella crítico).
-- Si el grupo visual viene de blog, partners, banderas o avatares, usa labels semánticos como "Miniaturas del blog" y evita naming de cursos.
+- Si el grupo visual viene de blog, partners, sponsors, speakers, banderas o avatares, usa labels semánticos como "Miniaturas del blog", "Logos de sponsors" o "Fotos de speakers" y evita naming de cursos.
 - No uses nombres como CourseGrid, courses o course.cover en snippets genéricos.
 - Distingue analytics de social: GTM/PostHog/Analytics no son embeds sociales, y Facebook/LinkedIn/TikTok no son analítica.
+- Si detectas una icon font como Font Awesome, recomienda SVGs individuales o subsetting agresivo; no la trates como una fuente de texto genérica.
 - Usa report.site_profile.framework_hint para elegir el estilo del snippet:
   - nextjs => React/Next
   - astro => Astro o HTML compatible con Astro

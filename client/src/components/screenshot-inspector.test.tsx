@@ -113,4 +113,38 @@ describe("ScreenshotInspector", () => {
       "blob:tile-3",
     );
   });
+
+  it("renders a composed long capture exposed as a single tile", async () => {
+    const composedScreenshot: ScreenshotPayload = {
+      ...baseScreenshot,
+      strategy: "single",
+      document_height: 4200,
+      captured_height: 4200,
+      tiles: [
+        {
+          id: "tile-0",
+          y: 0,
+          width: 1200,
+          height: 4200,
+          data_base64: "AQ==",
+        },
+      ],
+    };
+
+    render(
+      <ScreenshotInspector
+        screenshot={composedScreenshot}
+        elements={baseElements}
+        selectedElement={null}
+        selectionSignal={0}
+        onSelect={() => {}}
+      />,
+    );
+
+    expect((await screen.findByAltText("Document tile tile-0")).getAttribute("src")).toBe(
+      "blob:tile-1",
+    );
+    expect(screen.queryByText("Tiled Capture")).toBeNull();
+    expect(screen.getByText("Full Height")).toBeDefined();
+  });
 });

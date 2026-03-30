@@ -55,6 +55,12 @@ const (
 	dominantGroupShareThreshold       = 0.70
 	socialFindingMinBytes       int64 = 250_000
 	socialFindingMinRequests          = 8
+	paymentFindingMinBytes      int64 = 150_000
+	paymentFindingMinRequests         = 5
+	videoFindingMinBytes        int64 = 250_000
+	videoFindingMinRequests           = 4
+	promotedAnchorMinSavings    int64 = 60_000
+	lazyMajorityThreshold             = 0.70
 )
 
 func normalizeType(resourceType, mimeType, rawURL string) string {
@@ -303,7 +309,7 @@ func classifyThirdPartyKind(resource enrichedResource) string {
 		return thirdPartySocial
 	case containsAny(haystack, "youtube", "youtu.be", "vimeo", "loom"):
 		return thirdPartyVideo
-	case containsAny(haystack, "stripe", "paypal", "mercadopago", "checkout"):
+	case containsAny(haystack, "stripe", "paypal", "mercadopago", "checkout", "tickettailor"):
 		return thirdPartyPayment
 	default:
 		return thirdPartyUnknown
@@ -489,6 +495,12 @@ func repeatedGalleryLabel(resources []enrichedResource, viewportHeight int) stri
 			return label
 		}
 	}
+	if isLikelySpeakerGallery(resources) {
+		return "Fotos de speakers"
+	}
+	if isLikelyLogoGallery(resources) {
+		return "Logos de sponsors"
+	}
 	belowFold := 0
 	for _, resource := range resources {
 		band := resource.PositionBand
@@ -514,6 +526,10 @@ func semanticGalleryLabel(prefix string) string {
 	switch {
 	case containsAny(prefix, "/img/blog", "/blog", "/posts", "/articles"):
 		return "Miniaturas del blog"
+	case containsAny(prefix, "/sponsors"):
+		return "Logos de sponsors"
+	case containsAny(prefix, "/speakers", "/speaker", "/lineup", "/talks"):
+		return "Fotos de speakers"
 	case containsAny(prefix, "/partners", "/clients", "/logos"):
 		return "Logos de partners"
 	case containsAny(prefix, "/flags"):
@@ -523,6 +539,76 @@ func semanticGalleryLabel(prefix string) string {
 	default:
 		return ""
 	}
+}
+
+func isLikelySpeakerGallery(resources []enrichedResource) bool {
+	if len(resources) < 8 {
+		return false
+	}
+
+	portraitLike := 0
+	nameLike := 0
+	for _, resource := range resources {
+		if resource.BoundingBox != nil && resource.BoundingBox.Width > 0 && resource.BoundingBox.Height > 0 {
+			aspect := resource.BoundingBox.Height / resource.BoundingBox.Width
+			if aspect >= 0.9 && aspect <= 1.4 {
+				portraitLike++
+			}
+		}
+		if looksLikePersonalSlug(resource.URL) {
+			nameLike++
+		}
+	}
+
+	required := int(math.Ceil(float64(len(resources)) * 0.6))
+	return portraitLike >= required && nameLike >= required
+}
+
+func isLikelyLogoGallery(resources []enrichedResource) bool {
+	if len(resources) < 4 {
+		return false
+	}
+
+	wideCount := 0
+	lightCount := 0
+	for _, resource := range resources {
+		if resource.BoundingBox != nil && resource.BoundingBox.Width > 0 && resource.BoundingBox.Height > 0 {
+			aspect := resource.BoundingBox.Width / resource.BoundingBox.Height
+			if aspect >= 2.5 {
+				wideCount++
+			}
+		}
+		if resource.Bytes > 0 && resource.Bytes <= 50_000 {
+			lightCount++
+		}
+	}
+
+	required := int(math.Ceil(float64(len(resources)) * 0.6))
+	return wideCount >= required && lightCount >= required
+}
+
+func looksLikePersonalSlug(rawURL string) bool {
+	base := strings.ToLower(strings.TrimSpace(strings.TrimSuffix(path.Base(resourcePath(rawURL)), path.Ext(resourcePath(rawURL)))))
+	if base == "" {
+		return false
+	}
+	segments := strings.FieldsFunc(base, func(r rune) bool {
+		return r == '-' || r == '_'
+	})
+	if len(segments) < 2 || len(segments) > 3 {
+		return false
+	}
+	for _, segment := range segments {
+		if len(segment) < 2 {
+			return false
+		}
+		for _, r := range segment {
+			if r < 'a' || r > 'z' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func thirdPartyGroupLabel(kind string) string {
@@ -850,6 +936,8 @@ func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedRes
 	missingResponsive := countNonResponsiveImages(members)
 	medianRatio := medianNaturalToRenderedRatio(members)
 	mixedFormats := groupHasMixedFormats(members)
+	lazyCount := countLazyLoadedImages(members)
+	lazyMajority := len(members) > 0 && float64(lazyCount)/float64(len(members)) >= lazyMajorityThreshold
 
 	title := fmt.Sprintf("Reduce el peso de %s", withArticle(candidate.Label))
 	summary := fmt.Sprintf("%s suma %s. No todo este bloque es crítico para el viewport inicial, pero sí infla el coste por visita y multiplica el peso del bloque visual.", candidate.Label, humanBytes(candidate.TotalBytes))
@@ -862,6 +950,9 @@ func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedRes
 		title = fmt.Sprintf("Reduce el peso de %s cerca del fold", withArticle(candidate.Label))
 		summary = fmt.Sprintf("%s suma %s. Parte de ese bloque entra pronto en pantalla, pero su volumen sigue inflando el coste por visita más allá del primer viewport.", candidate.Label, humanBytes(candidate.TotalBytes))
 	}
+	if lazyMajority {
+		summary = fmt.Sprintf("%s suma %s. La mayoría de sus imágenes ya usan lazy loading, así que el margen principal está en sizes, tamaño de salida y formatos más eficientes.", candidate.Label, humanBytes(candidate.TotalBytes))
+	}
 
 	evidence := []string{
 		fmt.Sprintf("Grupo detectado: %s.", candidate.Label),
@@ -869,6 +960,12 @@ func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedRes
 		fmt.Sprintf("Posición dominante: %s.", strings.ReplaceAll(candidate.PositionBand, "_", " ")),
 		fmt.Sprintf("Imágenes sin srcset/sizes: %d de %d.", missingResponsive, len(members)),
 		fmt.Sprintf("Mediana natural/rendered: %s.", humanRatio(medianRatio)),
+	}
+	if lazyCount > 0 {
+		evidence = append(evidence, fmt.Sprintf("Imágenes con loading=\"lazy\": %d de %d.", lazyCount, len(members)))
+	}
+	if lazyMajority {
+		evidence = append(evidence, fmt.Sprintf("Lazy loading ya presente en la mayoría: %d de %d.", lazyCount, len(members)))
 	}
 	if mixedFormats {
 		evidence = append(evidence, "El grupo mezcla formatos legacy y modernos.")
@@ -893,7 +990,7 @@ func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedRes
 }
 
 func buildThirdPartyFindings(resources []enrichedResource, groups []ResourceGroup) []AnalysisFinding {
-	findings := make([]AnalysisFinding, 0, 2)
+	findings := make([]AnalysisFinding, 0, 4)
 	for _, group := range groups {
 		if group.Kind != groupKindThirdParty {
 			continue
@@ -932,6 +1029,42 @@ func buildThirdPartyFindings(resources []enrichedResource, groups []ResourceGrou
 				Evidence: []string{
 					fmt.Sprintf("Bytes del cluster social: %s.", humanBytes(group.TotalBytes)),
 					fmt.Sprintf("Peticiones del cluster social: %d.", group.ResourceCount),
+				},
+				EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, group.RelatedResourceIDs),
+				RelatedResourceIDs:    append([]string(nil), group.RelatedResourceIDs...),
+			})
+		case thirdPartyPayment:
+			if group.TotalBytes < paymentFindingMinBytes && group.ResourceCount < paymentFindingMinRequests {
+				continue
+			}
+			findings = append(findings, AnalysisFinding{
+				ID:         "third_party_payment_overhead",
+				Category:   "third_party",
+				Severity:   "medium",
+				Confidence: "high",
+				Title:      "Difiere ticketing y widgets de pago",
+				Summary:    fmt.Sprintf("Los widgets de ticketing o pago añaden %s en %d peticiones. No suelen aportar al primer render, pero sí meten terceros, iframes y trabajo extra durante la carga.", humanBytes(group.TotalBytes), group.ResourceCount),
+				Evidence: []string{
+					fmt.Sprintf("Bytes del cluster de pagos: %s.", humanBytes(group.TotalBytes)),
+					fmt.Sprintf("Peticiones del cluster de pagos: %d.", group.ResourceCount),
+				},
+				EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, group.RelatedResourceIDs),
+				RelatedResourceIDs:    append([]string(nil), group.RelatedResourceIDs...),
+			})
+		case thirdPartyVideo:
+			if group.TotalBytes < videoFindingMinBytes && group.ResourceCount < videoFindingMinRequests {
+				continue
+			}
+			findings = append(findings, AnalysisFinding{
+				ID:         "third_party_video_overhead",
+				Category:   "third_party",
+				Severity:   "medium",
+				Confidence: "high",
+				Title:      "Difiere embeds y players de video",
+				Summary:    fmt.Sprintf("Los embeds de video añaden %s en %d peticiones. Suelen aportar mucho peso en iframes, thumbnails o scripts externos antes de que el usuario interactúe.", humanBytes(group.TotalBytes), group.ResourceCount),
+				Evidence: []string{
+					fmt.Sprintf("Bytes del cluster de video: %s.", humanBytes(group.TotalBytes)),
+					fmt.Sprintf("Peticiones del cluster de video: %d.", group.ResourceCount),
 				},
 				EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, group.RelatedResourceIDs),
 				RelatedResourceIDs:    append([]string(nil), group.RelatedResourceIDs...),
@@ -1144,21 +1277,31 @@ func buildFontFinding(resources []enrichedResource, summary AnalysisSummary) *An
 		return nil
 	}
 
-	related := collectResourceIDs(filterResources(resources, func(resource enrichedResource) bool {
+	fontResources := filterResources(resources, func(resource enrichedResource) bool {
 		return resource.Type == "font"
-	}))
+	})
+	related := collectResourceIDs(fontResources)
+
+	title := "Recorta el coste tipográfico"
+	summaryText := fmt.Sprintf("La pila de fuentes suma %s en %d archivos. Aunque el LCP sea bajo, este coste penaliza la carga inicial y la consistencia del primer render.", humanBytes(summary.FontBytes), summary.FontRequests)
+	evidence := []string{
+		fmt.Sprintf("Bytes de fuentes: %s.", humanBytes(summary.FontBytes)),
+		fmt.Sprintf("Peticiones de fuentes: %d.", summary.FontRequests),
+	}
+	if dominantIconFont(fontResources) != nil {
+		title = "Recorta el coste de la fuente de iconos"
+		summaryText = fmt.Sprintf("La pila tipográfica suma %s en %d archivos y una parte material viene de una icon font genérica. Aquí suele rendir más pasar a SVGs individuales o subsetting agresivo que tratarla como texto común.", humanBytes(summary.FontBytes), summary.FontRequests)
+		evidence = append(evidence, "Se detectó una fuente de iconos pesada entre los recursos tipográficos.")
+	}
 
 	return &AnalysisFinding{
-		ID:         "font_stack_overweight",
-		Category:   "fonts",
-		Severity:   "medium",
-		Confidence: "medium",
-		Title:      "Recorta el coste tipográfico",
-		Summary:    fmt.Sprintf("La pila de fuentes suma %s en %d archivos. Aunque el LCP sea bajo, este coste penaliza la carga inicial y la consistencia del primer render.", humanBytes(summary.FontBytes), summary.FontRequests),
-		Evidence: []string{
-			fmt.Sprintf("Bytes de fuentes: %s.", humanBytes(summary.FontBytes)),
-			fmt.Sprintf("Peticiones de fuentes: %d.", summary.FontRequests),
-		},
+		ID:                    "font_stack_overweight",
+		Category:              "fonts",
+		Severity:              "medium",
+		Confidence:            "medium",
+		Title:                 title,
+		Summary:               summaryText,
+		Evidence:              evidence,
 		EstimatedSavingsBytes: sumEstimatedSavingsForIDs(resources, related),
 		RelatedResourceIDs:    related,
 	}
@@ -1375,7 +1518,7 @@ func buildSummary(resources []enrichedResource, totalBytes int64, potentialSavin
 	return summary
 }
 
-func rankVampireResources(resources []enrichedResource, groups []ResourceGroup, totalBytes int64) ([]enrichedResource, []string) {
+func rankVampireResources(resources []enrichedResource, groups []ResourceGroup, findings []AnalysisFinding, totalBytes int64) ([]enrichedResource, []string) {
 	sorted := append([]enrichedResource(nil), resources...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return vampireRankLess(sorted[i], sorted[j])
@@ -1478,6 +1621,18 @@ func rankVampireResources(resources []enrichedResource, groups []ResourceGroup, 
 			break
 		}
 	}
+
+	selected, selectedIDs, selectedGroupCounts = promoteFindingAnchors(
+		selected,
+		selectedIDs,
+		selectedGroupCounts,
+		seededIDs,
+		sorted,
+		rankIndex,
+		resourceByID,
+		groupRefsByResourceID,
+		findings,
+	)
 
 	sort.Slice(selected, func(i, j int) bool {
 		return vampireRankLess(selected[i], selected[j])
@@ -1768,6 +1923,181 @@ func worstSelectedIndex(selected []enrichedResource, rankIndex map[string]int, p
 	return worstIndex
 }
 
+func promoteFindingAnchors(
+	selected []enrichedResource,
+	selectedIDs map[string]struct{},
+	selectedGroupCounts map[string]int,
+	seededIDs map[string]struct{},
+	sorted []enrichedResource,
+	rankIndex map[string]int,
+	resourceByID map[string]enrichedResource,
+	groupRefsByResourceID map[string][]vampireGroupRef,
+	findings []AnalysisFinding,
+) ([]enrichedResource, map[string]struct{}, map[string]int) {
+	protectedIDs := make(map[string]struct{}, len(seededIDs))
+	for id := range seededIDs {
+		protectedIDs[id] = struct{}{}
+	}
+
+	for _, finding := range findings {
+		if !isPromotableAnchorFinding(finding.ID) {
+			continue
+		}
+		if selectedContainsAnyID(selectedIDs, finding.RelatedResourceIDs) {
+			continue
+		}
+
+		candidate := selectPromotableFindingResource(finding, sorted, resourceByID)
+		if candidate == nil {
+			continue
+		}
+		if _, ok := selectedIDs[candidate.ID]; ok {
+			protectedIDs[candidate.ID] = struct{}{}
+			continue
+		}
+
+		if len(selected) < 5 && canSelectVampire(*candidate, groupRefsByResourceID, selectedGroupCounts) {
+			selected = append(selected, *candidate)
+			selectedIDs[candidate.ID] = struct{}{}
+			incrementSelectedGroupCounts(*candidate, groupRefsByResourceID, selectedGroupCounts)
+			protectedIDs[candidate.ID] = struct{}{}
+			continue
+		}
+
+		removalIndices := promotionRemovalIndices(selected, rankIndex, protectedIDs, *candidate, groupRefsByResourceID)
+		for _, removeIndex := range removalIndices {
+			removed := selected[removeIndex]
+			decrementSelectedGroupCounts(removed, groupRefsByResourceID, selectedGroupCounts)
+			delete(selectedIDs, removed.ID)
+
+			if !canSelectVampire(*candidate, groupRefsByResourceID, selectedGroupCounts) {
+				selectedIDs[removed.ID] = struct{}{}
+				incrementSelectedGroupCounts(removed, groupRefsByResourceID, selectedGroupCounts)
+				continue
+			}
+
+			selected[removeIndex] = *candidate
+			selectedIDs[candidate.ID] = struct{}{}
+			incrementSelectedGroupCounts(*candidate, groupRefsByResourceID, selectedGroupCounts)
+			protectedIDs[candidate.ID] = struct{}{}
+			break
+		}
+	}
+
+	return selected, selectedIDs, selectedGroupCounts
+}
+
+func isPromotableAnchorFinding(id string) bool {
+	switch id {
+	case "responsive_image_overdelivery", "repeated_gallery_overdelivery", "dominant_image_overdelivery":
+		return true
+	default:
+		return false
+	}
+}
+
+func selectedContainsAnyID(selectedIDs map[string]struct{}, ids []string) bool {
+	for _, id := range ids {
+		if _, ok := selectedIDs[id]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func selectPromotableFindingResource(finding AnalysisFinding, sorted []enrichedResource, resourceByID map[string]enrichedResource) *enrichedResource {
+	if len(finding.RelatedResourceIDs) == 0 {
+		return nil
+	}
+
+	allowed := make(map[string]struct{}, len(finding.RelatedResourceIDs))
+	for _, id := range finding.RelatedResourceIDs {
+		allowed[id] = struct{}{}
+	}
+
+	var fallback *enrichedResource
+	for _, resource := range sorted {
+		if _, ok := allowed[resource.ID]; !ok {
+			continue
+		}
+		if resource.BoundingBox == nil {
+			continue
+		}
+		if estimateResourceSavings(resource) < promotedAnchorMinSavings {
+			continue
+		}
+		copy := resource
+		return &copy
+	}
+
+	for _, id := range finding.RelatedResourceIDs {
+		resource, ok := resourceByID[id]
+		if !ok || resource.BoundingBox == nil {
+			continue
+		}
+		if estimateResourceSavings(resource) < promotedAnchorMinSavings {
+			continue
+		}
+		copy := resource
+		fallback = &copy
+		break
+	}
+
+	return fallback
+}
+
+func promotionRemovalIndices(
+	selected []enrichedResource,
+	rankIndex map[string]int,
+	protectedIDs map[string]struct{},
+	candidate enrichedResource,
+	groupRefsByResourceID map[string][]vampireGroupRef,
+) []int {
+	indices := make([]int, 0, len(selected))
+	for index, resource := range selected {
+		if _, ok := protectedIDs[resource.ID]; ok {
+			continue
+		}
+		indices = append(indices, index)
+	}
+
+	sort.Slice(indices, func(i, j int) bool {
+		left := selected[indices[i]]
+		right := selected[indices[j]]
+		leftShared := sharesVampireGroup(left, candidate, groupRefsByResourceID)
+		rightShared := sharesVampireGroup(right, candidate, groupRefsByResourceID)
+		if leftShared != rightShared {
+			return leftShared
+		}
+		leftVisual := left.BoundingBox != nil
+		rightVisual := right.BoundingBox != nil
+		if leftVisual != rightVisual {
+			return !leftVisual
+		}
+		return rankIndex[left.ID] > rankIndex[right.ID]
+	})
+
+	return indices
+}
+
+func sharesVampireGroup(left, right enrichedResource, groupRefsByResourceID map[string][]vampireGroupRef) bool {
+	leftRefs := groupRefsByResourceID[left.ID]
+	rightRefs := groupRefsByResourceID[right.ID]
+	if len(leftRefs) == 0 || len(rightRefs) == 0 {
+		return false
+	}
+	lookup := make(map[string]struct{}, len(leftRefs))
+	for _, ref := range leftRefs {
+		lookup[ref.ID] = struct{}{}
+	}
+	for _, ref := range rightRefs {
+		if _, ok := lookup[ref.ID]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func shareOf(bytes, totalBytes int64) float64 {
 	if totalBytes <= 0 {
 		return 0
@@ -1913,6 +2243,38 @@ func countNonResponsiveImages(resources []enrichedResource) int {
 		}
 	}
 	return total
+}
+
+func countLazyLoadedImages(resources []enrichedResource) int {
+	total := 0
+	for _, resource := range resources {
+		if resource.Type == "image" && strings.EqualFold(strings.TrimSpace(resource.LoadingAttr), "lazy") {
+			total++
+		}
+	}
+	return total
+}
+
+func dominantIconFont(resources []enrichedResource) *enrichedResource {
+	var candidate *enrichedResource
+	for index := range resources {
+		resource := &resources[index]
+		if !isIconFontResource(*resource) {
+			continue
+		}
+		if candidate == nil || resource.Bytes > candidate.Bytes {
+			candidate = resource
+		}
+	}
+	return candidate
+}
+
+func isIconFontResource(resource enrichedResource) bool {
+	if resource.Type != "font" {
+		return false
+	}
+	haystack := strings.ToLower(strings.TrimSpace(resource.URL + " " + resource.Hostname))
+	return containsAny(haystack, "font-awesome", "fontawesome", "fa-solid", "fa-regular", "fa-brands", "materialicons", "material-icons")
 }
 
 func naturalToRenderedRatio(resource enrichedResource) float64 {

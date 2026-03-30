@@ -8,6 +8,7 @@ const wattlessAppURL =
 export function createMarkdownReport(
   report: ScanReport,
 ): string {
+  const textualFirstRenderNote = inferTextualFirstRenderNote(report);
   const lines = [
     `# Wattless Report`,
     ``,
@@ -58,6 +59,7 @@ export function createMarkdownReport(
     `- Font bytes: ${formatBytes(report.analysis.summary.font_bytes)}`,
     `- Render critical bytes: ${formatBytes(report.analysis.summary.render_critical_bytes)}`,
     ``,
+    ...(textualFirstRenderNote ? [`> ${textualFirstRenderNote}`, ``] : []),
     `## Elementos vampiro`,
     ``,
     ...report.vampire_elements.map(
@@ -101,4 +103,17 @@ function formatInspectorCoverage(report: ScanReport): string {
   }
 
   return `${captured_height} / ${document_height} px (truncated)`;
+}
+
+function inferTextualFirstRenderNote(report: ScanReport): string | null {
+  if (report.analysis.summary.above_fold_bytes !== 0) {
+    return null;
+  }
+  if (report.analysis.summary.render_critical_bytes <= 0) {
+    return null;
+  }
+  if (!report.analysis.findings.some((finding) => finding.id === "render_lcp_dom_node")) {
+    return null;
+  }
+  return "El primer render depende sobre todo de texto, fuentes y CSS. Que los `above_fold_bytes` visuales sean 0 no implica que el hero esté vacío: aquí el coste crítico vive en estilos y tipografía, no en media visible.";
 }

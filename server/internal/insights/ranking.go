@@ -29,6 +29,8 @@ func ConfidenceRank(value string) int {
 func FindingPriorityRank(value string) int {
 	switch value {
 	case "dominant_image_overdelivery":
+		return 4
+	case "third_party_payment_overhead", "third_party_video_overhead":
 		return 3
 	case "repeated_gallery_overdelivery":
 		return 2
