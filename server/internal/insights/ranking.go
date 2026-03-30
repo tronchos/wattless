@@ -30,9 +30,9 @@ func FindingPriorityRank(value string) int {
 	switch value {
 	case "dominant_image_overdelivery":
 		return 4
-	case "third_party_payment_overhead", "third_party_video_overhead":
+	case "third_party_payment_overhead", "third_party_video_overhead", "third_party_ads_overhead":
 		return 3
-	case "repeated_gallery_overdelivery":
+	case "legacy_image_format_overhead", "legacy_font_format_overhead", "repeated_gallery_overdelivery":
 		return 2
 	default:
 		return 0

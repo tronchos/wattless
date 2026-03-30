@@ -43,6 +43,7 @@ function makeReport(): ScanReport {
           estimated_savings_bytes: 250000,
           likely_lcp_impact: "low",
           related_resource_ids: [],
+          visible_related_resource_ids: [],
         },
         {
           id: "act-anchored",
@@ -54,6 +55,7 @@ function makeReport(): ScanReport {
           estimated_savings_bytes: 50000,
           likely_lcp_impact: "low",
           related_resource_ids: ["font-1"],
+          visible_related_resource_ids: ["font-1"],
         },
       ],
     },
@@ -100,12 +102,13 @@ function makeReport(): ScanReport {
       script_resource_duration_ms: 10,
       lcp_ms: 900,
       fcp_ms: 400,
+      render_metrics_complete: true,
       long_tasks_total_ms: 0,
       long_tasks_count: 0,
     },
     analysis: {
       summary: {
-        above_fold_bytes: 0,
+        above_fold_visual_bytes: 0,
         below_fold_bytes: 0,
         analytics_bytes: 0,
         analytics_requests: 0,

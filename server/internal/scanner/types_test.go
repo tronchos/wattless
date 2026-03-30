@@ -11,7 +11,7 @@ func TestReportJSONIncludesMetaAndMethodology(t *testing.T) {
 		URL: "https://example.com",
 		Analysis: Analysis{
 			Summary: AnalysisSummary{
-				AboveFoldBytes: 1234,
+				AboveFoldVisualBytes: 1234,
 			},
 			Findings: []AnalysisFinding{
 				{ID: "render_lcp_candidate", Title: "Ataca el LCP"},

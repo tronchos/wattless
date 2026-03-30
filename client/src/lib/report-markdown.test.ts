@@ -39,13 +39,14 @@ function makeReport(): ScanReport {
       script_resource_duration_ms: 200,
       lcp_ms: 900,
       fcp_ms: 700,
+      render_metrics_complete: true,
       long_tasks_total_ms: 100,
       long_tasks_count: 1,
       lcp_resource_tag: "h1",
     },
     analysis: {
       summary: {
-        above_fold_bytes: 0,
+        above_fold_visual_bytes: 0,
         below_fold_bytes: 400_000,
         analytics_bytes: 0,
         analytics_requests: 0,
@@ -104,7 +105,7 @@ describe("createMarkdownReport", () => {
 
   it("omits the textual-first-render note when above-fold visual bytes are present", () => {
     const report = makeReport();
-    report.analysis.summary.above_fold_bytes = 32_000;
+    report.analysis.summary.above_fold_visual_bytes = 32_000;
 
     const markdown = createMarkdownReport(report);
 

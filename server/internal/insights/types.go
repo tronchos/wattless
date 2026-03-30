@@ -37,6 +37,7 @@ type PerformanceContext struct {
 	ScriptResourceDurationMS int64  `json:"script_resource_duration_ms"`
 	LCPMS                    int64  `json:"lcp_ms"`
 	FCPMS                    int64  `json:"fcp_ms"`
+	RenderMetricsComplete    bool   `json:"render_metrics_complete"`
 	LongTasksTotalMS         int64  `json:"long_tasks_total_ms"`
 	LongTasksCount           int    `json:"long_tasks_count"`
 	LCPResourceURL           string `json:"lcp_resource_url,omitempty"`
@@ -56,7 +57,7 @@ type SummaryContext struct {
 }
 
 type AnalysisSummaryContext struct {
-	AboveFoldBytes       int64  `json:"above_fold_bytes"`
+	AboveFoldVisualBytes int64  `json:"above_fold_visual_bytes"`
 	BelowFoldBytes       int64  `json:"below_fold_bytes"`
 	LCPResourceID        string `json:"lcp_resource_id,omitempty"`
 	LCPResourceURL       string `json:"lcp_resource_url,omitempty"`
@@ -121,16 +122,17 @@ type RecommendedFix struct {
 }
 
 type TopAction struct {
-	ID                    string          `json:"id"`
-	RelatedFindingID      string          `json:"related_finding_id"`
-	Title                 string          `json:"title"`
-	Reason                string          `json:"reason"`
-	Confidence            string          `json:"confidence"`
-	Evidence              []string        `json:"evidence"`
-	EstimatedSavingsBytes int64           `json:"estimated_savings_bytes"`
-	LikelyLCPImpact       string          `json:"likely_lcp_impact"`
-	RelatedResourceIDs    []string        `json:"related_resource_ids"`
-	RecommendedFix        *RecommendedFix `json:"recommended_fix,omitempty"`
+	ID                        string          `json:"id"`
+	RelatedFindingID          string          `json:"related_finding_id"`
+	Title                     string          `json:"title"`
+	Reason                    string          `json:"reason"`
+	Confidence                string          `json:"confidence"`
+	Evidence                  []string        `json:"evidence"`
+	EstimatedSavingsBytes     int64           `json:"estimated_savings_bytes"`
+	LikelyLCPImpact           string          `json:"likely_lcp_impact"`
+	RelatedResourceIDs        []string        `json:"related_resource_ids"`
+	VisibleRelatedResourceIDs []string        `json:"visible_related_resource_ids"`
+	RecommendedFix            *RecommendedFix `json:"recommended_fix,omitempty"`
 }
 
 type AssetInsightDraft struct {

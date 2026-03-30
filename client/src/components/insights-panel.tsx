@@ -14,7 +14,7 @@ export function InsightsPanel({
   onSelectElement,
 }: InsightsPanelProps) {
   const isAnchoredAction = (action: ScanReport["insights"]["top_actions"][number]) =>
-    action.related_resource_ids.length > 0;
+    action.visible_related_resource_ids.length > 0;
 
   const resolveActionTargetID = (action: ScanReport["insights"]["top_actions"][number]) => {
     if (!isAnchoredAction(action)) {
@@ -28,7 +28,7 @@ export function InsightsPanel({
     }
 
     const matching = report.vampire_elements.find((element) =>
-      action.related_resource_ids.includes(element.id)
+      action.visible_related_resource_ids.includes(element.id)
     );
     return matching?.id ?? null;
   };
@@ -42,7 +42,7 @@ export function InsightsPanel({
       (action) =>
         selectedElement &&
         (selectedElement.asset_insight.related_action_id === action.id ||
-          action.related_resource_ids.includes(selectedElement.id)),
+          action.visible_related_resource_ids.includes(selectedElement.id)),
     ) ??
     null;
 
@@ -81,7 +81,7 @@ export function InsightsPanel({
               {compactActions.map((action) => {
                 const isActive = selectedElementID
                   ? selectedElement?.asset_insight.related_action_id === action.id ||
-                    action.related_resource_ids.includes(selectedElementID)
+                    action.visible_related_resource_ids.includes(selectedElementID)
                   : action.id === resolvedActiveAction?.id;
 
                 return (

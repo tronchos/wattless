@@ -88,7 +88,8 @@ Reglas:
 - No inventes métricas fuera del contexto dado.
 - Máximo 3 acciones.
 - Cada acción debe referenciar un related_finding_id existente.
-- related_resource_ids puede estar vacío cuando no exista un anchor visible y veraz entre top_resources.
+- related_resource_ids debe conservar los IDs factuales del finding aunque no haya anchor visible.
+- visible_related_resource_ids no hace falta que lo generes: lo calculará el backend a partir de top_resources.
 - Los top_resources del contexto son también los focus_assets válidos para asset_insights.
 - asset_insights solo puede usar resource_id presentes en top_resources.
 - Máximo 1 asset_insight por resource_id.
@@ -102,7 +103,8 @@ Reglas:
 - No digas below the fold salvo que la evidencia de posición lo soporte.
 - Distingue claramente entre carga inicial y below-the-fold.
 - Si el LCP observado corresponde a un nodo del DOM sin asset asociado, habla de CSS, tipografía o CPU antes que de imágenes.
-- Si above_fold_bytes es 0 pero render_critical_bytes es mayor que 0 y existe render_lcp_dom_node, explica que el primer render es textual/estilado y no sugieras que el above-the-fold esté vacío.
+- Si above_fold_visual_bytes es 0 pero render_critical_bytes es mayor que 0 y existe render_lcp_dom_node, explica que el primer render es textual/estilado y no sugieras que el above-the-fold esté vacío.
+- Si render_metrics_complete es false, no afirmes conclusiones fuertes basadas en LCP/FCP.
 - Usa el campo confidence para no sobreafirmar.
 - No interpretes script_resource_duration_ms como bloqueo real; usa long_tasks_total_ms para hablar de presión de CPU.
 - El campo 'recommended_fix' debe incluirse obligatoriamente en al menos la primera top action (el cuello de botella crítico).

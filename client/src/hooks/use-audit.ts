@@ -19,7 +19,7 @@ const activeJobStorageKey = "wattless.active_scan_job";
 const pollIntervalMs = 1500;
 
 function isAnchoredAction(action: ScanReport["insights"]["top_actions"][number]): boolean {
-  return action.related_resource_ids.length > 0;
+  return action.visible_related_resource_ids.length > 0;
 }
 
 function resolvePreferredElement(report: ScanReport): VampireElement | null {
@@ -43,7 +43,7 @@ function resolvePreferredElement(report: ScanReport): VampireElement | null {
     const matching = report.vampire_elements.find(
       (element) =>
         element.asset_insight.related_action_id === action.id ||
-        action.related_resource_ids.includes(element.id),
+        action.visible_related_resource_ids.includes(element.id),
     );
     if (matching) {
       return matching;

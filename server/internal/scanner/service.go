@@ -102,6 +102,9 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 
 	hostingResult, hostingWarnings := s.resolveHosting(ctx, target.Hostname)
 	warnings = append(warnings, hostingWarnings...)
+	if !perf.RenderMetricsComplete {
+		warnings = append(warnings, "Render metrics could not be captured completely; LCP/FCP-based editorial framing may be limited for this scan.")
+	}
 
 	totalBytes := int64(0)
 	for _, resource := range resources {
@@ -195,6 +198,7 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 			ScriptResourceDurationMS: report.Performance.ScriptResourceDurationMS,
 			LCPMS:                    report.Performance.LCPMS,
 			FCPMS:                    report.Performance.FCPMS,
+			RenderMetricsComplete:    report.Performance.RenderMetricsComplete,
 			LongTasksTotalMS:         report.Performance.LongTasksTotalMS,
 			LongTasksCount:           report.Performance.LongTasksCount,
 			LCPResourceURL:           report.Performance.LCPResourceURL,
@@ -642,6 +646,7 @@ func capturePerformance(page *rod.Page) (PerformanceMetrics, error) {
 	if err := json.Unmarshal([]byte(result.Value.Str()), &perf); err != nil {
 		return PerformanceMetrics{}, err
 	}
+	perf.RenderMetricsComplete = perf.LCPMS > 0 && perf.FCPMS > 0
 	return perf, nil
 }
 
@@ -1825,7 +1830,7 @@ func makeInsightAnalysis(analysis Analysis) insights.AnalysisContext {
 
 	return insights.AnalysisContext{
 		Summary: insights.AnalysisSummaryContext{
-			AboveFoldBytes:       analysis.Summary.AboveFoldBytes,
+			AboveFoldVisualBytes: analysis.Summary.AboveFoldVisualBytes,
 			BelowFoldBytes:       analysis.Summary.BelowFoldBytes,
 			LCPResourceID:        analysis.Summary.LCPResourceID,
 			LCPResourceURL:       analysis.Summary.LCPResourceURL,
@@ -1865,16 +1870,34 @@ func sanitizeTopActions(actions []insights.TopAction, findings []AnalysisFinding
 
 	output := append([]insights.TopAction(nil), actions...)
 	for index := range output {
-		related := filterVisibleActionResourceIDs(output[index].RelatedResourceIDs, visibleIDs)
+		related := dedupeActionResourceIDs(output[index].RelatedResourceIDs)
 		if len(related) == 0 {
 			if finding, ok := findingsByID[output[index].RelatedFindingID]; ok {
-				related = filterVisibleActionResourceIDs(finding.RelatedResourceIDs, visibleIDs)
+				related = dedupeActionResourceIDs(finding.RelatedResourceIDs)
 			}
 		}
 		output[index].RelatedResourceIDs = related
+		output[index].VisibleRelatedResourceIDs = filterVisibleActionResourceIDs(related, visibleIDs)
 	}
 
 	return output
+}
+
+func dedupeActionResourceIDs(ids []string) []string {
+	filtered := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		filtered = append(filtered, id)
+	}
+	return filtered
 }
 
 func filterVisibleActionResourceIDs(ids []string, visibleIDs map[string]struct{}) []string {

@@ -6,7 +6,7 @@ import (
 	"github.com/tronchos/wattless/server/internal/insights"
 )
 
-func TestSanitizeTopActionsKeepsExactVisibleMatchesFromFinding(t *testing.T) {
+func TestSanitizeTopActionsPreservesFactualIDsAndAddsVisibleSubset(t *testing.T) {
 	actions := []insights.TopAction{
 		{
 			ID:                 "act-1",
@@ -38,15 +38,18 @@ func TestSanitizeTopActionsKeepsExactVisibleMatchesFromFinding(t *testing.T) {
 	if len(sanitized) != 1 {
 		t.Fatalf("expected 1 action, got %d", len(sanitized))
 	}
-	if len(sanitized[0].RelatedResourceIDs) != 1 {
-		t.Fatalf("expected 1 related resource, got %#v", sanitized[0].RelatedResourceIDs)
+	if len(sanitized[0].RelatedResourceIDs) != 2 {
+		t.Fatalf("expected factual ids to be preserved, got %#v", sanitized[0].RelatedResourceIDs)
 	}
-	if sanitized[0].RelatedResourceIDs[0] != "visible-card" {
-		t.Fatalf("expected visible repeated card match, got %#v", sanitized[0].RelatedResourceIDs)
+	if len(sanitized[0].VisibleRelatedResourceIDs) != 1 {
+		t.Fatalf("expected 1 visible related resource, got %#v", sanitized[0].VisibleRelatedResourceIDs)
+	}
+	if sanitized[0].VisibleRelatedResourceIDs[0] != "visible-card" {
+		t.Fatalf("expected visible repeated card match, got %#v", sanitized[0].VisibleRelatedResourceIDs)
 	}
 }
 
-func TestSanitizeTopActionsLeavesRepeatedGalleryActionUnboundWithoutVisibleMatch(t *testing.T) {
+func TestSanitizeTopActionsLeavesVisibleSubsetEmptyWithoutMatch(t *testing.T) {
 	actions := []insights.TopAction{
 		{
 			ID:                 "act-1",
@@ -71,12 +74,15 @@ func TestSanitizeTopActionsLeavesRepeatedGalleryActionUnboundWithoutVisibleMatch
 	if len(sanitized) != 1 {
 		t.Fatalf("expected 1 action, got %d", len(sanitized))
 	}
-	if len(sanitized[0].RelatedResourceIDs) != 0 {
-		t.Fatalf("expected gallery finding to stay unbound without exact visible match, got %#v", sanitized[0].RelatedResourceIDs)
+	if len(sanitized[0].RelatedResourceIDs) != 1 {
+		t.Fatalf("expected factual gallery ids to remain, got %#v", sanitized[0].RelatedResourceIDs)
+	}
+	if len(sanitized[0].VisibleRelatedResourceIDs) != 0 {
+		t.Fatalf("expected visible subset to stay empty without exact match, got %#v", sanitized[0].VisibleRelatedResourceIDs)
 	}
 }
 
-func TestSanitizeTopActionsKeepsResponsiveImageActionUnboundWithoutVisibleMatch(t *testing.T) {
+func TestSanitizeTopActionsKeepsResponsiveImageFactualIDsWithoutVisibleMatch(t *testing.T) {
 	actions := []insights.TopAction{
 		{
 			ID:                 "act-1",
@@ -103,17 +109,19 @@ func TestSanitizeTopActionsKeepsResponsiveImageActionUnboundWithoutVisibleMatch(
 	if len(sanitized) != 1 {
 		t.Fatalf("expected 1 action, got %d", len(sanitized))
 	}
-	if len(sanitized[0].RelatedResourceIDs) != 0 {
-		t.Fatalf("expected responsive finding to stay unbound without exact visible match, got %#v", sanitized[0].RelatedResourceIDs)
+	if len(sanitized[0].RelatedResourceIDs) != 1 {
+		t.Fatalf("expected responsive finding ids to remain factual, got %#v", sanitized[0].RelatedResourceIDs)
+	}
+	if len(sanitized[0].VisibleRelatedResourceIDs) != 0 {
+		t.Fatalf("expected visible subset to stay empty without exact visible match, got %#v", sanitized[0].VisibleRelatedResourceIDs)
 	}
 }
 
-func TestSanitizeTopActionsLeavesAnalyticsActionUnboundWithoutVisibleMatch(t *testing.T) {
+func TestSanitizeTopActionsFallsBackToFindingIDsWhenActionOmitsThem(t *testing.T) {
 	actions := []insights.TopAction{
 		{
-			ID:                 "act-1",
-			RelatedFindingID:   "third_party_analytics_overhead",
-			RelatedResourceIDs: []string{"analytics-script"},
+			ID:               "act-1",
+			RelatedFindingID: "third_party_analytics_overhead",
 		},
 	}
 	findings := []AnalysisFinding{
@@ -133,8 +141,11 @@ func TestSanitizeTopActionsLeavesAnalyticsActionUnboundWithoutVisibleMatch(t *te
 	if len(sanitized) != 1 {
 		t.Fatalf("expected 1 action, got %d", len(sanitized))
 	}
-	if len(sanitized[0].RelatedResourceIDs) != 0 {
-		t.Fatalf("expected analytics action to stay unbound without exact visible match, got %#v", sanitized[0].RelatedResourceIDs)
+	if len(sanitized[0].RelatedResourceIDs) != 1 || sanitized[0].RelatedResourceIDs[0] != "analytics-script" {
+		t.Fatalf("expected finding ids to backfill the action, got %#v", sanitized[0].RelatedResourceIDs)
+	}
+	if len(sanitized[0].VisibleRelatedResourceIDs) != 0 {
+		t.Fatalf("expected analytics action to stay visually unbound without exact match, got %#v", sanitized[0].VisibleRelatedResourceIDs)
 	}
 }
 
@@ -177,12 +188,13 @@ func TestAttachAssetInsightsIgnoresInvalidDraftsAndFallsBackPerAsset(t *testing.
 	}
 	actions := []insights.TopAction{
 		{
-			ID:                 "act-1",
-			RelatedFindingID:   "repeated_gallery_overdelivery",
-			RelatedResourceIDs: []string{"visible-card"},
-			Reason:             "Optimiza el grid repetido con miniaturas más pequeñas.",
-			Confidence:         "high",
-			LikelyLCPImpact:    "low",
+			ID:                        "act-1",
+			RelatedFindingID:          "repeated_gallery_overdelivery",
+			RelatedResourceIDs:        []string{"visible-card"},
+			VisibleRelatedResourceIDs: []string{"visible-card"},
+			Reason:                    "Optimiza el grid repetido con miniaturas más pequeñas.",
+			Confidence:                "high",
+			LikelyLCPImpact:           "low",
 			RecommendedFix: &insights.RecommendedFix{
 				Summary:       "Fix de catálogo repetido.",
 				OptimizedCode: "<Image />",
@@ -234,7 +246,7 @@ func TestAttachAssetInsightsDoesNotLetUnrelatedAvatarInheritGalleryAction(t *tes
 	vampires := []ResourceSummary{
 		{
 			ID:                    "avatar",
-				URL:                   "https://example.com/teachers/avatar.webp",
+			URL:                   "https://example.com/teachers/avatar.webp",
 			Type:                  "image",
 			Bytes:                 18_000,
 			EstimatedSavingsBytes: 12_000,

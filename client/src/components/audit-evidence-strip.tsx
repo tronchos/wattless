@@ -9,12 +9,18 @@ export function AuditEvidenceStrip({ report }: AuditEvidenceStripProps) {
   const lcpResource = report.vampire_elements.find(
     (element) => element.id === report.analysis.summary.lcp_resource_id,
   );
+  const lcpBytes = lcpResource?.bytes ?? report.analysis.summary.lcp_resource_bytes ?? null;
+  const lcpDetail = lcpResource
+    ? formatResourceLabel(lcpResource.type)
+    : report.analysis.summary.lcp_resource_url
+      ? "Recurso LCP mapeado fuera del overlay"
+      : "No se detectó un asset visual único";
 
   const items = [
     {
       label: "Above the fold",
-      value: formatBytes(report.analysis.summary.above_fold_bytes),
-      detail: "Peso visible en el primer viewport",
+      value: formatBytes(report.analysis.summary.above_fold_visual_bytes),
+      detail: "Peso visual visible en el primer viewport",
     },
     {
       label: "Below the fold",
@@ -23,8 +29,8 @@ export function AuditEvidenceStrip({ report }: AuditEvidenceStripProps) {
     },
     {
       label: "LCP resource",
-      value: lcpResource ? formatBytes(lcpResource.bytes) : "Sin match",
-      detail: lcpResource ? formatResourceLabel(lcpResource.type) : "No se detectó un asset visual único",
+      value: lcpBytes !== null ? formatBytes(lcpBytes) : "Sin match",
+      detail: lcpDetail,
     },
     {
       label: "Analytics",

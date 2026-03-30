@@ -48,6 +48,17 @@ const emptyStateHighlights = [
   },
 ];
 
+function formatRenderMetric(value: number, complete: boolean): string {
+  return complete ? formatMilliseconds(value) : "N/D";
+}
+
+function renderMetricProgress(value: number, complete: boolean): number {
+  if (!complete) {
+    return 30;
+  }
+  return Math.max(10, 100 - Math.min(value / 40, 90));
+}
+
 export function ScanWorkbench() {
   const {
     inputURL,
@@ -211,13 +222,10 @@ export function ScanWorkbench() {
                   />
                   <MetricCard
                     label="Performance"
-                    value={formatMilliseconds(report.performance.lcp_ms)}
-                    caption={`FCP ${formatMilliseconds(report.performance.fcp_ms)} · Long Tasks ${formatMilliseconds(report.performance.long_tasks_total_ms)}`}
+                    value={formatRenderMetric(report.performance.lcp_ms, report.performance.render_metrics_complete)}
+                    caption={`FCP ${formatRenderMetric(report.performance.fcp_ms, report.performance.render_metrics_complete)} · Long Tasks ${formatMilliseconds(report.performance.long_tasks_total_ms)}`}
                     hint="Render crítico y presión real de CPU."
-                    progress={Math.max(
-                      10,
-                      100 - Math.min(report.performance.lcp_ms / 40, 90),
-                    )}
+                    progress={renderMetricProgress(report.performance.lcp_ms, report.performance.render_metrics_complete)}
                     icon={Gauge}
                   />
                 </section>
@@ -364,12 +372,12 @@ export function ScanWorkbench() {
                                   </div>
                                   <div className="mt-1 flex items-baseline gap-2">
                                     <span className="text-2xl font-headline font-bold text-on-surface">
-                                      {formatMilliseconds(report.performance.lcp_ms)}
+                                      {formatRenderMetric(report.performance.lcp_ms, report.performance.render_metrics_complete)}
                                     </span>
                                     <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wide">LCP</span>
                                   </div>
                                   <div className="text-xs opacity-70 mt-1.5">
-                                    FCP: {formatMilliseconds(report.performance.fcp_ms)}
+                                    FCP: {formatRenderMetric(report.performance.fcp_ms, report.performance.render_metrics_complete)}
                                   </div>
                                 </div>
 
@@ -434,12 +442,12 @@ export function ScanWorkbench() {
                                      <div className="h-16 w-3 bg-surface-container-highest rounded-full relative overflow-hidden flex flex-col justify-end border border-outline-variant/10">
                                         <div 
                                           className="w-full bg-primary" 
-                                          style={{height: `${(report.analysis.summary.below_fold_bytes / Math.max(report.analysis.summary.above_fold_bytes + report.analysis.summary.below_fold_bytes, 1)) * 100}%`}}
+                                          style={{height: `${(report.analysis.summary.below_fold_bytes / Math.max(report.analysis.summary.above_fold_visual_bytes + report.analysis.summary.below_fold_bytes, 1)) * 100}%`}}
                                         ></div>
                                      </div>
                                      <div className="flex flex-col gap-2">
                                        <div className="leading-none">
-                                         <div className="text-[15px] font-bold font-headline text-on-surface">{formatBytes(report.analysis.summary.above_fold_bytes)}</div>
+                                         <div className="text-[15px] font-bold font-headline text-on-surface">{formatBytes(report.analysis.summary.above_fold_visual_bytes)}</div>
                                          <div className="text-[10px] text-on-surface-variant uppercase mt-0.5">Above Fold</div>
                                        </div>
                                        <div className="leading-none">

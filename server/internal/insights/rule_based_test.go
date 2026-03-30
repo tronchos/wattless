@@ -585,6 +585,51 @@ func TestRecommendedFixForFindingProvidesPaymentAndVideoSnippets(t *testing.T) {
 	}
 }
 
+func TestRecommendedFixForFindingUsesLazySnippetForBelowFoldResponsiveImage(t *testing.T) {
+	fix := recommendedFixForFinding(ReportContext{
+		SiteProfile: SiteProfileContext{FrameworkHint: "astro"},
+	}, AnalysisFindingContext{
+		ID: "responsive_image_overdelivery",
+		Evidence: []string{
+			"Posición visual: below fold.",
+		},
+	})
+
+	if fix == nil {
+		t.Fatal("expected responsive image fix")
+	}
+	if !strings.Contains(fix.OptimizedCode, `loading="lazy"`) {
+		t.Fatalf("expected below-fold responsive snippet to stay lazy, got %q", fix.OptimizedCode)
+	}
+}
+
+func TestRecommendedFixForFindingProvidesAdsAndLegacyFormatSnippets(t *testing.T) {
+	adsFix := recommendedFixForFinding(ReportContext{
+		SiteProfile: SiteProfileContext{FrameworkHint: "generic"},
+	}, AnalysisFindingContext{
+		ID: "third_party_ads_overhead",
+	})
+	if adsFix == nil || !strings.Contains(strings.ToLower(adsFix.OptimizedCode), "googletag") {
+		t.Fatalf("expected ads fix snippet, got %#v", adsFix)
+	}
+
+	imageFix := recommendedFixForFinding(ReportContext{
+		SiteProfile: SiteProfileContext{FrameworkHint: "astro"},
+	}, AnalysisFindingContext{
+		ID: "legacy_image_format_overhead",
+	})
+	if imageFix == nil || !strings.Contains(imageFix.OptimizedCode, "Picture") {
+		t.Fatalf("expected legacy image fix, got %#v", imageFix)
+	}
+
+	fontFix := recommendedFixForFinding(ReportContext{}, AnalysisFindingContext{
+		ID: "legacy_font_format_overhead",
+	})
+	if fontFix == nil || !strings.Contains(strings.ToLower(fontFix.OptimizedCode), "woff2") {
+		t.Fatalf("expected legacy font fix, got %#v", fontFix)
+	}
+}
+
 func TestRecommendedFixForFindingUsesIconFontSpecificGuidance(t *testing.T) {
 	fix := recommendedFixForFinding(ReportContext{
 		SiteProfile: SiteProfileContext{FrameworkHint: "nextjs"},
@@ -671,8 +716,8 @@ func TestBuildExecutiveSummaryExplainsTextualFirstRender(t *testing.T) {
 		TotalBytesTransferred: 200_000,
 		Analysis: AnalysisContext{
 			Summary: AnalysisSummaryContext{
-				AboveFoldBytes:      0,
-				RenderCriticalBytes: 180_000,
+				AboveFoldVisualBytes: 0,
+				RenderCriticalBytes:  180_000,
 			},
 			Findings: []AnalysisFindingContext{
 				{
@@ -706,12 +751,83 @@ func TestBuildExecutiveSummaryExplainsTextualFirstRender(t *testing.T) {
 	}
 }
 
+func TestBuildExecutiveSummaryAndPitchAlignForAdsLead(t *testing.T) {
+	report := ReportContext{
+		Performance: PerformanceContext{
+			RenderMetricsComplete: true,
+			LCPMS:                 1680,
+		},
+		Analysis: AnalysisContext{
+			Findings: []AnalysisFindingContext{
+				{
+					ID:         "third_party_ads_overhead",
+					Severity:   "medium",
+					Confidence: "high",
+				},
+			},
+		},
+	}
+
+	summary := strings.ToLower(buildExecutiveSummary(report))
+	pitch := strings.ToLower(buildPitchLine(report))
+	if !strings.Contains(summary, "publicitario") {
+		t.Fatalf("expected ads summary, got %q", summary)
+	}
+	if !strings.Contains(pitch, "publicitario") {
+		t.Fatalf("expected ads pitch, got %q", pitch)
+	}
+}
+
+func TestBuildExecutiveSummaryTreatsIncompleteRenderMetricsCautiously(t *testing.T) {
+	summary := strings.ToLower(buildExecutiveSummary(ReportContext{
+		Performance: PerformanceContext{
+			RenderMetricsComplete: false,
+		},
+		Analysis: AnalysisContext{
+			Summary: AnalysisSummaryContext{
+				RenderCriticalBytes: 180_000,
+			},
+		},
+	}))
+
+	if !strings.Contains(summary, "no captur") && !strings.Contains(summary, "métricas de render") {
+		t.Fatalf("expected incomplete render caution, got %q", summary)
+	}
+}
+
+func TestBuildRuleBasedAssetInsightDoesNotCrossMatchRepeatedGalleryAssets(t *testing.T) {
+	draft := BuildRuleBasedAssetInsight(
+		ResourceContext{
+			ID:         "sponsor-logo",
+			Type:       "image",
+			URL:        "https://example.com/sponsors/acme.webp",
+			VisualRole: "repeated_card_media",
+		},
+		[]AnalysisFindingContext{
+			{
+				ID:                 "repeated_gallery_overdelivery",
+				Category:           "media",
+				Severity:           "medium",
+				Confidence:         "high",
+				Title:              "Reduce el peso de fotos de speakers",
+				Summary:            "Las fotos de speakers suman demasiado peso.",
+				RelatedResourceIDs: []string{"speaker-1", "speaker-2"},
+			},
+		},
+		nil,
+	)
+
+	if draft.RelatedFindingID != "" {
+		t.Fatalf("expected cross-gallery asset to avoid inherited finding, got %q", draft.RelatedFindingID)
+	}
+}
+
 func TestBuildExecutiveSummaryKeepsTextualLeadWhenRenderLCPSitsOnDOMNode(t *testing.T) {
 	summary := buildExecutiveSummary(ReportContext{
 		Analysis: AnalysisContext{
 			Summary: AnalysisSummaryContext{
-				AboveFoldBytes:      0,
-				RenderCriticalBytes: 220_000,
+				AboveFoldVisualBytes: 0,
+				RenderCriticalBytes:  220_000,
 			},
 			Findings: []AnalysisFindingContext{
 				{
@@ -732,8 +848,8 @@ func TestBuildPitchLineKeepsTextualLeadWhenRenderLCPSitsOnDOMNode(t *testing.T) 
 	pitch := buildPitchLine(ReportContext{
 		Analysis: AnalysisContext{
 			Summary: AnalysisSummaryContext{
-				AboveFoldBytes:      0,
-				RenderCriticalBytes: 220_000,
+				AboveFoldVisualBytes: 0,
+				RenderCriticalBytes:  220_000,
 			},
 			Findings: []AnalysisFindingContext{
 				{

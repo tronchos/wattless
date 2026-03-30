@@ -9,6 +9,12 @@ export function createMarkdownReport(
   report: ScanReport,
 ): string {
   const textualFirstRenderNote = inferTextualFirstRenderNote(report);
+  const lcpValue = report.performance.render_metrics_complete
+    ? formatMilliseconds(report.performance.lcp_ms)
+    : "No capturado";
+  const fcpValue = report.performance.render_metrics_complete
+    ? formatMilliseconds(report.performance.fcp_ms)
+    : "No capturado";
   const lines = [
     `# Wattless Report`,
     ``,
@@ -18,8 +24,8 @@ export function createMarkdownReport(
     `- Score: ${report.score}`,
     `- CO2 por visita: ${formatGrams(report.co2_grams_per_visit)}`,
     `- Transferencia total: ${formatBytes(report.total_bytes_transferred)}`,
-    `- LCP: ${formatMilliseconds(report.performance.lcp_ms)}`,
-    `- FCP: ${formatMilliseconds(report.performance.fcp_ms)}`,
+    `- LCP: ${lcpValue}`,
+    `- FCP: ${fcpValue}`,
     `- Long Tasks: ${formatMilliseconds(report.performance.long_tasks_total_ms)} (${report.performance.long_tasks_count})`,
     `- Load: ${formatMilliseconds(report.performance.load_ms)}`,
     `- Inspector coverage: ${formatInspectorCoverage(report)}`,
@@ -52,7 +58,7 @@ export function createMarkdownReport(
     ``,
     `## Evidence`,
     ``,
-    `- Above the fold bytes: ${formatBytes(report.analysis.summary.above_fold_bytes)}`,
+    `- Above the fold visual bytes: ${formatBytes(report.analysis.summary.above_fold_visual_bytes)}`,
     `- Below the fold bytes: ${formatBytes(report.analysis.summary.below_fold_bytes)}`,
     `- LCP resource: ${report.analysis.summary.lcp_resource_url || "Sin match"}${report.analysis.summary.lcp_resource_bytes ? ` (${formatBytes(report.analysis.summary.lcp_resource_bytes)})` : ""}`,
     `- Analytics bytes: ${formatBytes(report.analysis.summary.analytics_bytes)}`,
@@ -106,7 +112,7 @@ function formatInspectorCoverage(report: ScanReport): string {
 }
 
 function inferTextualFirstRenderNote(report: ScanReport): string | null {
-  if (report.analysis.summary.above_fold_bytes !== 0) {
+  if (report.analysis.summary.above_fold_visual_bytes !== 0) {
     return null;
   }
   if (report.analysis.summary.render_critical_bytes <= 0) {
@@ -115,5 +121,5 @@ function inferTextualFirstRenderNote(report: ScanReport): string | null {
   if (!report.analysis.findings.some((finding) => finding.id === "render_lcp_dom_node")) {
     return null;
   }
-  return "El primer render depende sobre todo de texto, fuentes y CSS. Que los `above_fold_bytes` visuales sean 0 no implica que el hero esté vacío: aquí el coste crítico vive en estilos y tipografía, no en media visible.";
+  return "El primer render depende sobre todo de texto, fuentes y CSS. Que los `above_fold_visual_bytes` sean 0 no implica que el hero esté vacío: aquí el coste crítico vive en estilos y tipografía, no en media visible.";
 }

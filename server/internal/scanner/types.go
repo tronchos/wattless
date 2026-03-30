@@ -82,6 +82,7 @@ type PerformanceMetrics struct {
 	ScriptResourceDurationMS int64  `json:"script_resource_duration_ms"`
 	LCPMS                    int64  `json:"lcp_ms"`
 	FCPMS                    int64  `json:"fcp_ms"`
+	RenderMetricsComplete    bool   `json:"render_metrics_complete"`
 	LongTasksTotalMS         int64  `json:"long_tasks_total_ms"`
 	LongTasksCount           int    `json:"long_tasks_count"`
 	LCPResourceURL           string `json:"lcp_resource_url,omitempty"`
@@ -91,7 +92,7 @@ type PerformanceMetrics struct {
 }
 
 type AnalysisSummary struct {
-	AboveFoldBytes       int64  `json:"above_fold_bytes"`
+	AboveFoldVisualBytes int64  `json:"above_fold_visual_bytes"`
 	BelowFoldBytes       int64  `json:"below_fold_bytes"`
 	LCPResourceID        string `json:"lcp_resource_id,omitempty"`
 	LCPResourceURL       string `json:"lcp_resource_url,omitempty"`

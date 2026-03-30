@@ -29,6 +29,8 @@ func (RuleBasedProvider) SuggestResource(resource ResourceContext) string {
 		return "Forma parte de una galería repetida. Optimízala en lote y sirve versiones más pequeñas para bajar el coste por visita."
 	case resource.IsThirdPartyTool && resource.ThirdPartyKind == "analytics":
 		return "Retrasa la analítica no esencial hasta interacción o agrupa proveedores para bajar ruido de red."
+	case resource.IsThirdPartyTool && resource.ThirdPartyKind == "ads":
+		return "Reduce el stack publicitario temprano, limita auctions/iframes y difiere piezas no esenciales fuera del arranque."
 	case resource.IsThirdPartyTool && resource.ThirdPartyKind == "social":
 		return "Difiere embeds y widgets sociales hasta interacción o viewport para evitar que compitan con la carga inicial."
 	case resource.IsThirdPartyTool && resource.ThirdPartyKind == "payment":
@@ -199,6 +201,8 @@ func findingImpact(finding AnalysisFindingContext) string {
 		return "medium"
 	case "dominant_image_overdelivery":
 		return "low"
+	case "third_party_ads_overhead":
+		return "low"
 	case "third_party_social_overhead":
 		return "low"
 	default:
@@ -306,6 +310,16 @@ func recommendedFixForFinding(report ReportContext, finding AnalysisFindingConte
 			},
 			ExpectedImpact: "Menos peso de terceros y menos scripts/iframes antes de la reproducción.",
 		}
+	case "third_party_ads_overhead":
+		return &RecommendedFix{
+			Summary:       "Recorta el stack publicitario temprano: limita auctions, posterga iframes/slots no críticos y reduce vendors en el arranque.",
+			OptimizedCode: deferredAdsCode(framework),
+			Changes: []string{
+				"Se evita montar slots o subastas no esenciales durante el arranque",
+				"Se reduce la presión de scripts e iframes externos antes del contenido editorial",
+			},
+			ExpectedImpact: "Menos variabilidad, menos trabajo de terceros y menos bytes antes de la interacción.",
+		}
 	case "font_stack_overweight":
 		if reportHasIconFont(report, finding) {
 			return &RecommendedFix{
@@ -345,13 +359,33 @@ func recommendedFixForFinding(report ReportContext, finding AnalysisFindingConte
 	case "responsive_image_overdelivery":
 		return &RecommendedFix{
 			Summary:       "Sirve una imagen adaptada a su caja renderizada y declara variantes para no mandar desktop completo a cajas pequeñas.",
-			OptimizedCode: responsiveImageCode(framework),
+			OptimizedCode: responsiveImageCode(framework, finding),
 			Changes: []string{
 				"srcset/sizes o equivalente del framework para ajustar el tamaño real",
 				"Variantes pensadas para la caja visible y para pantallas 2x",
 				"Menos bytes sin perder nitidez perceptible",
 			},
 			ExpectedImpact: "Menos transferencia por imagen sin degradar la experiencia visual.",
+		}
+	case "legacy_image_format_overhead":
+		return &RecommendedFix{
+			Summary:       "Sirve variantes AVIF/WebP y deja JPEG/PNG solo como fallback donde de verdad haga falta.",
+			OptimizedCode: legacyImageFormatCode(framework),
+			Changes: []string{
+				"Se priorizan formatos modernos para la mayoría del catálogo visual",
+				"Se mantienen fallbacks legacy solo donde la compatibilidad lo exige",
+			},
+			ExpectedImpact: "Menos peso de imagen acumulado sin degradar la calidad percibida.",
+		}
+	case "legacy_font_format_overhead":
+		return &RecommendedFix{
+			Summary:       "Sirve WOFF2 como formato principal para fuentes de texto y deja WOFF/TTF solo como fallback excepcional.",
+			OptimizedCode: legacyFontFormatCode(framework),
+			Changes: []string{
+				"Se reduce el peso tipográfico con un formato más eficiente",
+				"Se evita seguir pagando bytes de formatos legacy en navegadores modernos",
+			},
+			ExpectedImpact: "Menos transferencia tipográfica sin cambiar la identidad visual.",
 		}
 	default:
 		return nil
@@ -363,6 +397,7 @@ func buildExecutiveSummary(report ReportContext) string {
 	gallery := dominantRepeatedGalleryGroup(report.Analysis.ResourceGroups)
 	textualLead := textualFirstRenderLead(report)
 	dominantThirdParty := dominantEditorialThirdPartyGroup(report)
+	hasMeasuredLCP := report.Performance.RenderMetricsComplete && report.Performance.LCPMS > 0
 	switch {
 	case top != nil && top.ID == "dominant_image_overdelivery":
 		return textualLead + "Un solo asset visual concentra demasiado peso para el valor que aporta. Antes de afinar el resto del sitio, conviene corregir esa sobreentrega desproporcionada."
@@ -375,18 +410,32 @@ func buildExecutiveSummary(report ReportContext) string {
 			return textualLead + "La presión de CPU aparece cerca del umbral en este scan. No es la señal más estable del informe, pero conviene vigilarla porque puede competir con el render inicial."
 		}
 		return textualLead + "El peso de red no explica todo el problema: Wattless detectó presión real de CPU y Long Tasks que compiten con la experiencia inicial."
+	case top != nil && top.ID == "third_party_ads_overhead":
+		return textualLead + "El mayor coste evitable está en el stack publicitario: suma scripts, auctions e iframes externos antes de aportar valor editorial."
+	case top != nil && top.ID == "third_party_payment_overhead":
+		return textualLead + "El mayor coste total viene del ticketing/pago embebido. Antes de afinar grids secundarios, conviene reducir esa dependencia de terceros."
+	case top != nil && top.ID == "third_party_video_overhead":
+		return textualLead + "Una parte material del coste viene de players, iframes y thumbnails de video externos. Diferirlos devuelve margen sin tocar el contenido crítico."
+	case top != nil && top.ID == "third_party_analytics_overhead":
+		return textualLead + "La capa de analítica ya mete suficiente ruido de red como para merecer recorte antes de seguir afinando detalles secundarios."
+	case top != nil && top.ID == "legacy_image_format_overhead":
+		return textualLead + "Una parte material del peso de imagen sigue en formatos legacy. Aquí hay un recorte bastante limpio sin tocar el layout ni la narrativa visual."
+	case top != nil && top.ID == "legacy_font_format_overhead":
+		return textualLead + "Parte del coste tipográfico sigue viniendo de formatos legacy. Servir WOFF2 como camino principal da un recorte limpio en el arranque."
 	case dominantThirdParty != nil:
 		return textualLead + fmt.Sprintf("El mayor coste total viene de %s: %s. Antes de afinar grids secundarios, conviene reducir esa dependencia de terceros.", strings.ToLower(withArticle(dominantThirdParty.Label)), formatBytes(dominantThirdParty.TotalBytes))
 	case report.Summary.ThirdPartyBytes*2 >= report.TotalBytesTransferred && report.TotalBytesTransferred > 0:
 		return textualLead + "La experiencia inicial se sostiene, pero la mayor parte del peso total viene de terceros y eso infla bytes, variabilidad y coste por visita."
-	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
+	case gallery != nil && gallery.TotalBytes >= 400_000 && hasMeasuredLCP && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
 		return textualLead + fmt.Sprintf("La home es rápida en el primer render, pero %s bajo el fold siguen inflando el coste por visita más de lo que parece.", withArticle(gallery.Label))
-	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000:
+	case gallery != nil && gallery.TotalBytes >= 400_000 && hasMeasuredLCP && report.Performance.LCPMS < 2_000:
 		return textualLead + fmt.Sprintf("La home es rápida en el primer render, pero %s siguen inflando el coste por visita más de lo que parece.", withArticle(gallery.Label))
 	case report.Performance.LongTasksTotalMS >= 250:
-		return "El peso de red no explica todo el problema: hay presión real de CPU y Long Tasks que compiten con la experiencia inicial."
+		return textualLead + "El peso de red no explica todo el problema: hay presión real de CPU y Long Tasks que compiten con la experiencia inicial."
 	case report.Analysis.Summary.FontBytes >= 250_000:
 		return textualLead + "La base es razonable, pero la pila tipográfica sigue siendo más cara de lo necesario para una carga inicial eficiente."
+	case !report.Performance.RenderMetricsComplete:
+		return textualLead + "La transferencia ya da señales útiles, pero este scan no capturó todas las métricas de render; conviene interpretar LCP/FCP con cautela y apoyarse más en bytes críticos, CPU y terceros."
 	default:
 		return "El informe separa transferencia, render crítico y peso bajo el fold para que el siguiente arreglo tenga retorno real y no solo cambie un número aislado."
 	}
@@ -397,6 +446,7 @@ func buildPitchLine(report ReportContext) string {
 	top := firstFinding(report.Analysis.Findings)
 	textualLead := textualFirstRenderPitchLead(report)
 	dominantThirdParty := dominantEditorialThirdPartyGroup(report)
+	hasMeasuredLCP := report.Performance.RenderMetricsComplete && report.Performance.LCPMS > 0
 	switch {
 	case top != nil && top.ID == "dominant_image_overdelivery":
 		return textualLead + "aquí hay un win claro: corregir una sola imagen dominante puede bajar muchísimo el peso total sin tocar el resto del sitio."
@@ -404,22 +454,36 @@ func buildPitchLine(report ReportContext) string {
 		return textualLead + "el siguiente salto no está en otra imagen: conviene ordenar CSS, tipografía y CPU del nodo que domina el LCP."
 	case top != nil && top.ID == "render_lcp_candidate":
 		return textualLead + "el mejor retorno inmediato está en el recurso que coincide con el LCP."
-	case dominantThirdParty != nil:
-		return textualLead + fmt.Sprintf("ahora toca recortar %s para bajar variabilidad y bytes sin tocar el contenido crítico.", strings.ToLower(withArticle(dominantThirdParty.Label)))
-	case report.Summary.ThirdPartyBytes*2 >= report.TotalBytesTransferred && report.TotalBytesTransferred > 0:
-		return textualLead + "el siguiente salto viene de reducir terceros antes que de seguir afinando solo media propia."
-	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
-		return textualLead + fmt.Sprintf("ahora toca recortar el coste acumulado de %s bajo el fold para bajar bytes sin sacrificar UX.", withArticle(gallery.Label))
-	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000:
-		return textualLead + fmt.Sprintf("ahora toca recortar el coste repetido de %s para bajar bytes sin sacrificar UX.", withArticle(gallery.Label))
 	case top != nil && top.ID == "main_thread_cpu_pressure" && top.Confidence == "low":
 		return textualLead + "la CPU ya enseña fricción cerca del umbral; vigilarla ahora evita que esa variabilidad termine empeorando el arranque."
 	case top != nil && top.ID == "main_thread_cpu_pressure":
 		return textualLead + "reducir trabajo real de CPU es el siguiente paso para devolver fluidez al arranque."
+	case top != nil && top.ID == "third_party_ads_overhead":
+		return textualLead + "ahora toca recortar el stack publicitario temprano para bajar variabilidad, scripts externos y bytes sin tocar la parte editorial."
+	case top != nil && top.ID == "third_party_payment_overhead":
+		return textualLead + "ahora toca diferir ticketing y pago para bajar variabilidad y bytes sin tocar el contenido crítico."
+	case top != nil && top.ID == "third_party_video_overhead":
+		return textualLead + "ahora toca recortar los embeds de video para bajar variabilidad y bytes sin tocar el contenido crítico."
+	case top != nil && top.ID == "third_party_analytics_overhead":
+		return textualLead + "ahora toca limpiar la sobrecarga de analítica para que no siga compitiendo con el arranque."
+	case top != nil && top.ID == "legacy_image_format_overhead":
+		return textualLead + "el siguiente recorte limpio viene de migrar imagen legacy a formatos modernos antes que de seguir afinando piezas sueltas."
+	case top != nil && top.ID == "legacy_font_format_overhead":
+		return textualLead + "migrar las fuentes pesadas a WOFF2 es un recorte limpio que no debería tocar la identidad visual."
+	case dominantThirdParty != nil:
+		return textualLead + fmt.Sprintf("ahora toca recortar %s para bajar variabilidad y bytes sin tocar el contenido crítico.", strings.ToLower(withArticle(dominantThirdParty.Label)))
+	case report.Summary.ThirdPartyBytes*2 >= report.TotalBytesTransferred && report.TotalBytesTransferred > 0:
+		return textualLead + "el siguiente salto viene de reducir terceros antes que de seguir afinando solo media propia."
+	case gallery != nil && gallery.TotalBytes >= 400_000 && hasMeasuredLCP && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
+		return textualLead + fmt.Sprintf("ahora toca recortar el coste acumulado de %s bajo el fold para bajar bytes sin sacrificar UX.", withArticle(gallery.Label))
+	case gallery != nil && gallery.TotalBytes >= 400_000 && hasMeasuredLCP && report.Performance.LCPMS < 2_000:
+		return textualLead + fmt.Sprintf("ahora toca recortar el coste repetido de %s para bajar bytes sin sacrificar UX.", withArticle(gallery.Label))
 	case report.Analysis.Summary.AnalyticsBytes >= 80_000:
 		return "Separar render crítico de sobrecarga de terceros te da una mejora doble: menos variabilidad y menos CO2 por visita."
 	case report.Performance.LongTasksTotalMS >= 250:
-		return "Aquí no basta con comprimir archivos: reducir trabajo real de CPU es lo que devolverá fluidez al arranque."
+		return textualLead + "Aquí no basta con comprimir archivos: reducir trabajo real de CPU es lo que devolverá fluidez al arranque."
+	case !report.Performance.RenderMetricsComplete:
+		return textualLead + "con métricas de render incompletas, el siguiente paso fiable está en recortar bytes críticos, terceros y trabajo de CPU antes que en leer demasiado un LCP ausente."
 	default:
 		return "Menos bytes donde importan y menos ruido donde no aportan valor: esa es la diferencia entre una web ligera y una web defendible."
 	}
@@ -473,7 +537,7 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 		switch {
 		case asset.ID != "" && finding.ID == "dominant_image_overdelivery" && containsString(finding.RelatedResourceIDs, asset.ID):
 			candidates = append(candidates, finding)
-		case asset.VisualRole == "repeated_card_media" && finding.ID == "repeated_gallery_overdelivery":
+		case asset.VisualRole == "repeated_card_media" && finding.ID == "repeated_gallery_overdelivery" && containsString(finding.RelatedResourceIDs, asset.ID):
 			candidates = append(candidates, finding)
 		case asset.VisualRole == "lcp_candidate" && finding.ID == "render_lcp_candidate":
 			candidates = append(candidates, finding)
@@ -481,7 +545,13 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 			candidates = append(candidates, finding)
 		case asset.Type == "font" && finding.ID == "font_stack_overweight":
 			candidates = append(candidates, finding)
+		case asset.Type == "font" && finding.ID == "legacy_font_format_overhead":
+			candidates = append(candidates, finding)
+		case asset.Type == "image" && finding.ID == "legacy_image_format_overhead" && containsString(finding.RelatedResourceIDs, asset.ID):
+			candidates = append(candidates, finding)
 		case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics" && finding.ID == "third_party_analytics_overhead":
+			candidates = append(candidates, finding)
+		case asset.IsThirdPartyTool && asset.ThirdPartyKind == "ads" && finding.ID == "third_party_ads_overhead":
 			candidates = append(candidates, finding)
 		case asset.IsThirdPartyTool && asset.ThirdPartyKind == "social" && finding.ID == "third_party_social_overhead":
 			candidates = append(candidates, finding)
@@ -529,6 +599,8 @@ func assetFindingPreferenceScore(asset ResourceContext, finding AnalysisFindingC
 	switch {
 	case finding.ID == "dominant_image_overdelivery":
 		return 4
+	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "ads" && finding.ID == "third_party_ads_overhead":
+		return 3
 	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics" && finding.ID == "third_party_analytics_overhead":
 		return 3
 	case asset.IsThirdPartyTool && asset.ThirdPartyKind == "social" && finding.ID == "third_party_social_overhead":
@@ -539,6 +611,10 @@ func assetFindingPreferenceScore(asset ResourceContext, finding AnalysisFindingC
 		return 3
 	case asset.Type == "font" && finding.ID == "font_stack_overweight":
 		return 3
+	case asset.Type == "font" && finding.ID == "legacy_font_format_overhead":
+		return 3
+	case asset.Type == "image" && finding.ID == "legacy_image_format_overhead":
+		return 2
 	case asset.VisualRole == "repeated_card_media" && finding.ID == "repeated_gallery_overdelivery":
 		return 3
 	default:
@@ -837,6 +913,8 @@ func withArticle(label string) string {
 		return "los avatares"
 	case "cluster de pagos":
 		return "el cluster de pagos"
+	case "cluster de anuncios":
+		return "el cluster de anuncios"
 	case "embeds de video":
 		return "los embeds de video"
 	case "colección de miniaturas":
@@ -849,7 +927,7 @@ func withArticle(label string) string {
 }
 
 func reportHasTextualFirstRender(report ReportContext) bool {
-	if report.Analysis.Summary.AboveFoldBytes != 0 || report.Analysis.Summary.RenderCriticalBytes <= 0 {
+	if report.Analysis.Summary.AboveFoldVisualBytes != 0 || report.Analysis.Summary.RenderCriticalBytes <= 0 {
 		return false
 	}
 	for _, finding := range report.Analysis.Findings {
@@ -903,7 +981,7 @@ func dominantEditorialThirdPartyGroup(report ReportContext) *ResourceGroupContex
 
 func isEditorialThirdPartyLabel(label string) bool {
 	haystack := strings.ToLower(strings.TrimSpace(label))
-	return strings.Contains(haystack, "pagos") || strings.Contains(haystack, "video")
+	return strings.Contains(haystack, "pagos") || strings.Contains(haystack, "video") || strings.Contains(haystack, "anuncios")
 }
 
 func repeatedGalleryAlreadyLazy(finding AnalysisFindingContext) bool {
@@ -1368,7 +1446,11 @@ export function DeferredWidget() {
 </script>`
 }
 
-func responsiveImageCode(framework string) string {
+func responsiveImageCode(framework string, finding AnalysisFindingContext) string {
+	loadingAttr := `loading="lazy"`
+	if responsiveImageShouldEager(finding) {
+		loadingAttr = `loading="eager"`
+	}
 	switch framework {
 	case "astro":
 		return `---
@@ -1381,7 +1463,7 @@ import cardCover from "../assets/card-cover.webp";
   alt="Portada optimizada"
   widths={[320, 480, 640]}
   sizes="(max-width: 768px) 100vw, 480px"
-  loading="eager"
+  ` + loadingAttr + `
 />`
 	case "generic", "unknown":
 		return `<img
@@ -1390,9 +1472,26 @@ import cardCover from "../assets/card-cover.webp";
   sizes="(max-width: 768px) 100vw, 480px"
   width="480"
   height="270"
+  ` + loadingAttr + `
   alt="Portada optimizada"
 />`
 	default:
+		if loadingAttr == `loading="eager"` {
+			return `import Image from "next/image";
+
+export function ResponsiveCardImage() {
+  return (
+    <Image
+      src="/card-cover.webp"
+      alt="Portada optimizada"
+      width={480}
+      height={270}
+      sizes="(max-width: 768px) 100vw, 480px"
+      loading="eager"
+    />
+  );
+}`
+		}
 		return `import Image from "next/image";
 
 export function ResponsiveCardImage() {
@@ -1403,8 +1502,100 @@ export function ResponsiveCardImage() {
       width={480}
       height={270}
       sizes="(max-width: 768px) 100vw, 480px"
+      loading="lazy"
     />
   );
 }`
 	}
+}
+
+func responsiveImageShouldEager(finding AnalysisFindingContext) bool {
+	haystack := strings.ToLower(strings.TrimSpace(finding.Summary + " " + strings.Join(finding.Evidence, " ")))
+	return !containsAny(haystack, "below fold", "near fold", "posición visual: below fold", "posición visual: near fold")
+}
+
+func legacyImageFormatCode(framework string) string {
+	switch framework {
+	case "nextjs":
+		return `import Image from "next/image";
+
+export function CoverImage() {
+  return (
+    <Image
+      src="/cover.avif"
+      alt="Portada optimizada"
+      width={1280}
+      height={720}
+      sizes="(max-width: 768px) 100vw, 1280px"
+    />
+  );
+}`
+	case "astro":
+		return `---
+import { Picture } from "astro:assets";
+import cover from "../assets/cover.jpg";
+---
+
+<Picture
+  src={cover}
+  alt="Portada optimizada"
+  formats={["avif", "webp"]}
+  widths={[480, 768, 1280]}
+  sizes="(max-width: 768px) 100vw, 1280px"
+/>`
+	default:
+		return `<picture>
+  <source srcset="/cover.avif" type="image/avif">
+  <source srcset="/cover.webp" type="image/webp">
+  <img
+    src="/cover.jpg"
+    width="1280"
+    height="720"
+    loading="lazy"
+    alt="Portada optimizada"
+  >
+</picture>`
+	}
+}
+
+func legacyFontFormatCode(framework string) string {
+	_ = framework
+	return `@font-face {
+  font-family: "Brand Sans";
+  src:
+    url("/fonts/brand-sans.woff2") format("woff2"),
+    url("/fonts/brand-sans.woff") format("woff");
+  font-display: swap;
+  font-weight: 400 700;
+}`
+}
+
+func deferredAdsCode(framework string) string {
+	if framework == "nextjs" {
+		return `import { useEffect, useState } from "react";
+
+export function DeferredAdSlot() {
+  const [shouldMount, setShouldMount] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShouldMount(true), 2500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return shouldMount ? <div id="ad-slot-top" /> : <div style={{ minHeight: 250 }} />;
+}`
+	}
+
+	return `<div id="ad-slot-top" style="min-height:250px"></div>
+<script>
+  window.addEventListener("load", () => {
+    requestIdleCallback(() => {
+      if (window.googletag) {
+        window.googletag.cmd.push(() => {
+          window.googletag.display("ad-slot-top");
+        });
+      }
+    });
+  });
+</script>`
 }

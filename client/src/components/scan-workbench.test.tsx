@@ -124,12 +124,13 @@ const fakeReport = {
     script_resource_duration_ms: 10,
     lcp_ms: 1200,
     fcp_ms: 400,
+    render_metrics_complete: true,
     long_tasks_total_ms: 0,
     long_tasks_count: 0,
   },
   analysis: {
     summary: {
-      above_fold_bytes: 1234,
+      above_fold_visual_bytes: 1234,
       below_fold_bytes: 0,
       analytics_bytes: 0,
       analytics_requests: 0,

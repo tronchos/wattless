@@ -12,7 +12,12 @@ export function CompareBanner({ current, previous }: CompareBannerProps) {
   const bytesDelta =
     current.total_bytes_transferred - previous.total_bytes_transferred;
   const co2Delta = current.co2_grams_per_visit - previous.co2_grams_per_visit;
-  const lcpDelta = current.performance.lcp_ms - previous.performance.lcp_ms;
+  const hasComparableLCP =
+    current.performance.render_metrics_complete &&
+    previous.performance.render_metrics_complete;
+  const lcpDelta = hasComparableLCP
+    ? current.performance.lcp_ms - previous.performance.lcp_ms
+    : null;
 
   return (
     <section className="surface-secondary rounded-[1.2rem] px-4 py-3">
@@ -28,7 +33,7 @@ export function CompareBanner({ current, previous }: CompareBannerProps) {
             {co2Delta.toFixed(3)} g
           </span>
           <span className="soft-chip bg-[rgba(255,255,255,0.03)]">
-            LCP {formatSignedDelta(lcpDelta, " ms")}
+            LCP {lcpDelta === null ? "n/d" : formatSignedDelta(lcpDelta, " ms")}
           </span>
         </div>
       </div>

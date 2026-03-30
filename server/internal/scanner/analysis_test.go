@@ -7,8 +7,8 @@ import (
 
 func TestNormalizeTypePrefersURLHints(t *testing.T) {
 	got := normalizeType("Other", "text/html", "https://example.com/favicon.ico")
-	if got != "image" {
-		t.Fatalf("expected image, got %s", got)
+	if got != "document" {
+		t.Fatalf("expected html mime to win, got %s", got)
 	}
 }
 
@@ -21,6 +21,43 @@ func TestClassifyPartyUsesSiteRoot(t *testing.T) {
 	}
 	if got := classifyParty("docs.example.github.io", "cdn.other.github.io"); got != partyThird {
 		t.Fatalf("expected github.io tenants to remain third party, got %s", got)
+	}
+}
+
+func TestClassifyPartyTreatsBrandedCDNAsFirstParty(t *testing.T) {
+	if got := classifyParty("www.marca.com", "objetos.estaticos-marca.com"); got != partyFirst {
+		t.Fatalf("expected branded cdn to be first party, got %s", got)
+	}
+}
+
+func TestClassifyThirdPartyKindRecognizesAdobeAndYTIMG(t *testing.T) {
+	adobe := enrichedResource{
+		URL:      "https://assets.adobedtm.com/launch-EN.js",
+		Hostname: "assets.adobedtm.com",
+		Party:    partyThird,
+	}
+	if got := classifyThirdPartyKind(adobe); got != thirdPartyAnalytics {
+		t.Fatalf("expected adobe tag manager to be analytics, got %s", got)
+	}
+
+	video := enrichedResource{
+		URL:      "https://i.ytimg.com/vi/example/maxresdefault.jpg",
+		Hostname: "i.ytimg.com",
+		Party:    partyThird,
+	}
+	if got := classifyThirdPartyKind(video); got != thirdPartyVideo {
+		t.Fatalf("expected ytimg to be video, got %s", got)
+	}
+}
+
+func TestClassifyThirdPartyKindDoesNotTreatEditorialAdSlugAsAds(t *testing.T) {
+	resource := enrichedResource{
+		URL:      "https://cdn.example.net/files/ad_208_webp/example.webp",
+		Hostname: "cdn.example.net",
+		Party:    partyThird,
+	}
+	if got := classifyThirdPartyKind(resource); got != thirdPartyUnknown {
+		t.Fatalf("expected branded editorial path to avoid ads classification, got %s", got)
 	}
 }
 
@@ -241,6 +278,174 @@ func TestBuildAnalysisCreatesFindingsFromEvidence(t *testing.T) {
 	if !hasFinding(analysis.Findings, "main_thread_cpu_pressure") {
 		t.Fatal("expected main thread finding")
 	}
+}
+
+func TestBuildAnalysisKeepsSmallRealLCPAsRenderCandidate(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:           "lcp-image",
+			URL:          "https://example.com/hero.webp",
+			Type:         "image",
+			MIMEType:     "image/webp",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        16_817,
+			BoundingBox:  &BoundingBox{X: 0, Y: 0, Width: 655, Height: 380},
+			PositionBand: positionAboveFold,
+			VisualRole:   visualRoleLCPCandidate,
+		},
+	}
+
+	analysis := buildAnalysis(resources, PerformanceMetrics{
+		LCPMS:                 1680,
+		FCPMS:                 1400,
+		RenderMetricsComplete: true,
+		LCPResourceURL:        "https://example.com/hero.webp",
+		LCPResourceTag:        "img",
+	}, nil)
+
+	finding := findFinding(analysis.Findings, "render_lcp_candidate")
+	if finding == nil {
+		t.Fatal("expected small real lcp resource to keep render_lcp_candidate")
+	}
+	if strings.Contains(strings.ToLower(finding.Summary), "sin asset de red") {
+		t.Fatalf("expected real lcp resource summary, got %q", finding.Summary)
+	}
+	if hasFinding(analysis.Findings, "render_lcp_dom_node") {
+		t.Fatal("expected dom-node fallback to stay absent when lcp resource exists")
+	}
+}
+
+func TestBuildThirdPartyFindingsIncludesAdsFinding(t *testing.T) {
+	resources := []enrichedResource{
+		{ID: "ad-1", Type: "script", Party: partyThird, Bytes: 220_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyAds},
+		{ID: "ad-2", Type: "script", Party: partyThird, Bytes: 180_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyAds},
+		{ID: "ad-3", Type: "script", Party: partyThird, Bytes: 160_000, IsThirdPartyTool: true, ThirdPartyKind: thirdPartyAds},
+	}
+	groups := []ResourceGroup{
+		{
+			ID:                 "group-third-party-ads",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster de anuncios",
+			TotalBytes:         560_000,
+			ResourceCount:      12,
+			RelatedResourceIDs: []string{"ad-1", "ad-2", "ad-3"},
+		},
+	}
+
+	findings := buildThirdPartyFindings(resources, groups)
+	finding := findFinding(findings, "third_party_ads_overhead")
+	if finding == nil {
+		t.Fatal("expected ads finding")
+	}
+	if finding.EstimatedSavingsBytes != 420_000 {
+		t.Fatalf("expected deferred ads savings factor, got %d", finding.EstimatedSavingsBytes)
+	}
+}
+
+func TestBuildAnalysisAddsLegacyFormatFindings(t *testing.T) {
+	resources := []enrichedResource{
+		{ID: "img-1", Type: "image", MIMEType: "image/jpeg", Bytes: 400_000},
+		{ID: "img-2", Type: "image", MIMEType: "image/jpeg", Bytes: 350_000},
+		{ID: "img-3", Type: "image", MIMEType: "image/png", Bytes: 200_000},
+		{ID: "img-4", Type: "image", MIMEType: "image/jpeg", Bytes: 150_000},
+		{ID: "img-5", Type: "image", MIMEType: "image/jpeg", Bytes: 120_000},
+		{ID: "font-1", Type: "font", MIMEType: "font/woff", URL: "https://example.com/fonts/brand.woff", Bytes: 60_000},
+		{ID: "font-2", Type: "font", MIMEType: "font/woff", URL: "https://example.com/fonts/brand-bold.woff", Bytes: 55_000},
+	}
+
+	analysis := buildAnalysis(resources, PerformanceMetrics{}, nil)
+	if !hasFinding(analysis.Findings, "legacy_image_format_overhead") {
+		t.Fatal("expected legacy image format finding")
+	}
+	if !hasFinding(analysis.Findings, "legacy_font_format_overhead") {
+		t.Fatal("expected legacy font format finding")
+	}
+}
+
+func TestBuildAnalysisSkipsLegacyFontFindingWhenWOFFHasWOFF2Equivalent(t *testing.T) {
+	resources := []enrichedResource{
+		{ID: "font-modern", Type: "font", MIMEType: "font/woff2", URL: "https://example.com/fonts/brand.woff2", Bytes: 62_000},
+		{ID: "font-fallback", Type: "font", MIMEType: "font/woff", URL: "https://example.com/fonts/brand.woff", Bytes: 61_000},
+	}
+
+	analysis := buildAnalysis(resources, PerformanceMetrics{}, nil)
+	if hasFinding(analysis.Findings, "legacy_font_format_overhead") {
+		t.Fatal("expected legacy font finding to stay silent when only fallback woff remains alongside woff2")
+	}
+}
+
+func TestRankVampireResourcesSuppressesHTMLInImgAndTinyNoise(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:          "html-img",
+			URL:         "https://example.com/subscription/",
+			Type:        "document",
+			MIMEType:    "text/html",
+			Bytes:       75_000,
+			DOMTag:      "img",
+			BoundingBox: &BoundingBox{X: 0, Y: 800, Width: 1, Height: 1},
+		},
+		{
+			ID:          "tiny-thumb",
+			URL:         "https://example.com/thumb.jpg",
+			Type:        "image",
+			MIMEType:    "image/jpeg",
+			Bytes:       3_000,
+			BoundingBox: &BoundingBox{X: 80, Y: 20, Width: 25, Height: 37},
+			VisualRole:  visualRoleAboveFoldMedia,
+		},
+		{
+			ID:           "real-font",
+			URL:          "https://example.com/font.woff2",
+			Type:         "font",
+			MIMEType:     "font/woff2",
+			Bytes:        40_000,
+			PositionBand: positionUnknown,
+		},
+	}
+
+	ranked, _ := rankVampireResources(resources, nil, nil, 118_000)
+	for _, resource := range ranked {
+		if resource.ID == "html-img" || resource.ID == "tiny-thumb" {
+			t.Fatalf("expected noisy resources to be suppressed, got %#v", ranked)
+		}
+	}
+}
+
+func TestRankVampireResourcesKeepsVisibleHTMLWidgetsWhenTheyAreNotBrokenImgTargets(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:               "payment-widget",
+			URL:              "https://buy.example.com/widget",
+			Type:             "document",
+			MIMEType:         "text/html",
+			Bytes:            180_000,
+			Party:            partyThird,
+			IsThirdPartyTool: true,
+			ThirdPartyKind:   thirdPartyPayment,
+			BoundingBox:      &BoundingBox{X: 80, Y: 1200, Width: 960, Height: 640},
+			VisualRole:       visualRoleBelowFoldMedia,
+			PositionBand:     positionBelowFold,
+			DOMTag:           "iframe",
+		},
+		{
+			ID:           "fallback-font",
+			URL:          "https://example.com/font.woff2",
+			Type:         "font",
+			MIMEType:     "font/woff2",
+			Bytes:        20_000,
+			PositionBand: positionUnknown,
+		},
+	}
+
+	ranked, _ := rankVampireResources(resources, nil, nil, 200_000)
+	for _, resource := range ranked {
+		if resource.ID == "payment-widget" {
+			return
+		}
+	}
+	t.Fatalf("expected visible html widget to remain eligible as vampire anchor, got %#v", ranked)
 }
 
 func TestBuildMainThreadFindingUsesLowConfidenceNearThresholdBand(t *testing.T) {
@@ -1044,7 +1249,7 @@ func TestRankVampireResourcesPrefersRepeatedGalleryCardOverDeepAvatar(t *testing
 	}
 }
 
-func TestBuildAnalysisExcludesDeepAssetsFromAboveFoldBytesEvenIfVisibleRatioIsSet(t *testing.T) {
+func TestBuildAnalysisExcludesDeepAssetsFromAboveFoldVisualBytesEvenIfVisibleRatioIsSet(t *testing.T) {
 	resources := []enrichedResource{
 		{
 			ID:            "avatar",
@@ -1066,8 +1271,8 @@ func TestBuildAnalysisExcludesDeepAssetsFromAboveFoldBytesEvenIfVisibleRatioIsSe
 		t.Fatalf("expected deep avatar to be below fold, got %s", annotated[0].PositionBand)
 	}
 	analysis := buildAnalysis(annotated, PerformanceMetrics{}, groups)
-	if analysis.Summary.AboveFoldBytes != 0 {
-		t.Fatalf("expected deep asset to stay out of above fold bytes, got %d", analysis.Summary.AboveFoldBytes)
+	if analysis.Summary.AboveFoldVisualBytes != 0 {
+		t.Fatalf("expected deep asset to stay out of above fold visual bytes, got %d", analysis.Summary.AboveFoldVisualBytes)
 	}
 }
 

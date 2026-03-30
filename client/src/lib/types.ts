@@ -27,6 +27,7 @@ export interface TopAction {
   estimated_savings_bytes: number;
   likely_lcp_impact: "high" | "medium" | "low";
   related_resource_ids: string[];
+  visible_related_resource_ids: string[];
   recommended_fix?: FixSuggestion;
 }
 
@@ -117,6 +118,7 @@ export interface PerformanceMetrics {
   script_resource_duration_ms: number;
   lcp_ms: number;
   fcp_ms: number;
+  render_metrics_complete: boolean;
   long_tasks_total_ms: number;
   long_tasks_count: number;
   lcp_resource_url?: string;
@@ -126,7 +128,7 @@ export interface PerformanceMetrics {
 }
 
 export interface AnalysisSummary {
-  above_fold_bytes: number;
+  above_fold_visual_bytes: number;
   below_fold_bytes: number;
   lcp_resource_id?: string;
   lcp_resource_url?: string;
