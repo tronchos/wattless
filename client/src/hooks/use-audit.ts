@@ -96,7 +96,7 @@ function loadStoredJob(): ScanJobResponse | null {
 
 export function useAudit() {
   const [restoredJob] = useState<ScanJobResponse | null>(() => loadStoredJob());
-  const [inputURL, setInputURL] = useState(sampleURL);
+  const [inputURL, setInputURL] = useState("");
   const [report, setReport] = useState<ScanReport | null>(null);
   const [previousReport, setPreviousReport] = useState<ScanReport | null>(null);
   const [selectedElementID, setSelectedElementID] = useState<string | null>(null);

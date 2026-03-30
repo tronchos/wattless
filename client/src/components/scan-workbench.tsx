@@ -145,7 +145,7 @@ export function ScanWorkbench() {
               </button>
             </form>
             
-            {!report && (
+            {!report && isScanning && (
                <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs uppercase tracking-widest font-label">
                  <span className="bg-surface-container-highest text-on-surface px-3 py-1.5 rounded-full border border-outline-variant/20">
                    {formatProgressBadgeLabel(
@@ -155,13 +155,6 @@ export function ScanWorkbench() {
                      scanProgressIndex,
                    )}
                  </span>
-                 <button
-                   type="button"
-                   onClick={() => setInputURL(sampleURL)}
-                   className="bg-surface-container-highest text-on-surface px-3 py-1.5 rounded-full border border-outline-variant/20 hover:bg-surface-container-high transition-colors"
-                 >
-                   Usar example.com
-                 </button>
                </div>
             )}
             
