@@ -243,6 +243,51 @@ func TestBuildAnalysisCreatesFindingsFromEvidence(t *testing.T) {
 	}
 }
 
+func TestBuildMainThreadFindingUsesLowConfidenceNearThresholdBand(t *testing.T) {
+	finding := buildMainThreadFinding([]enrichedResource{
+		{
+			ID:    "script-1",
+			Type:  "script",
+			Bytes: 80_000,
+		},
+	}, PerformanceMetrics{
+		LongTasksTotalMS:         220,
+		LongTasksCount:           3,
+		ScriptResourceDurationMS: 1_800,
+	})
+
+	if finding == nil {
+		t.Fatal("expected near-threshold cpu finding")
+	}
+	if finding.Severity != "low" {
+		t.Fatalf("expected low severity near threshold, got %q", finding.Severity)
+	}
+	if finding.Confidence != "low" {
+		t.Fatalf("expected low confidence near threshold, got %q", finding.Confidence)
+	}
+	if !strings.Contains(strings.ToLower(finding.Summary), "oscilar") {
+		t.Fatalf("expected summary to explain scan variability, got %q", finding.Summary)
+	}
+}
+
+func TestBuildMainThreadFindingStaysNilBelowNearThresholdBand(t *testing.T) {
+	finding := buildMainThreadFinding([]enrichedResource{
+		{
+			ID:    "script-1",
+			Type:  "script",
+			Bytes: 80_000,
+		},
+	}, PerformanceMetrics{
+		LongTasksTotalMS:         180,
+		LongTasksCount:           2,
+		ScriptResourceDurationMS: 1_100,
+	})
+
+	if finding != nil {
+		t.Fatalf("expected cpu finding below near-threshold band, got %#v", finding)
+	}
+}
+
 func TestBuildAnalysisCreatesTextLCPFindingWithoutAssetURL(t *testing.T) {
 	resources := []enrichedResource{
 		{
@@ -710,6 +755,122 @@ func TestRankVampireResourcesPromotesVisualDiversityAndCapsClusters(t *testing.T
 	}
 	if containsWarning(warnings, "The heaviest resources could not be mapped to visible DOM boxes.") {
 		t.Fatalf("did not expect unmapped warning when visual candidates exist, got %#v", warnings)
+	}
+}
+
+func TestRankVampireResourcesSkipsLowImpactVisualFiller(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:           "font-semibold",
+			URL:          "https://example.com/fonts/inter-semibold.woff2",
+			Type:         "font",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        119_000,
+			PositionBand: positionUnknown,
+		},
+		{
+			ID:           "font-bold",
+			URL:          "https://example.com/fonts/inter-bold.woff2",
+			Type:         "font",
+			Hostname:     "example.com",
+			Party:        partyFirst,
+			Bytes:        118_000,
+			PositionBand: positionUnknown,
+		},
+		{
+			ID:               "analytics",
+			URL:              "https://us-assets.i.posthog.com/static/posthog-recorder.js",
+			Type:             "script",
+			Hostname:         "us-assets.i.posthog.com",
+			Party:            partyThird,
+			Bytes:            90_000,
+			IsThirdPartyTool: true,
+			ThirdPartyKind:   thirdPartyAnalytics,
+			PositionBand:     positionUnknown,
+		},
+		{
+			ID:            "card-1",
+			URL:           "https://example.com/courses/course-1.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         320_000,
+			NaturalWidth:  3840,
+			NaturalHeight: 2160,
+			BoundingBox:   &BoundingBox{X: 0, Y: 648, Width: 414, Height: 233},
+			PositionBand:  positionAboveFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "card-2",
+			URL:           "https://example.com/courses/course-2.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         290_000,
+			NaturalWidth:  3840,
+			NaturalHeight: 2160,
+			BoundingBox:   &BoundingBox{X: 420, Y: 648, Width: 414, Height: 233},
+			PositionBand:  positionAboveFold,
+			VisualRole:    visualRoleRepeatedCard,
+		},
+		{
+			ID:            "avatar",
+			URL:           "https://example.com/teachers/midu.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         18_000,
+			NaturalWidth:  500,
+			NaturalHeight: 500,
+			BoundingBox:   &BoundingBox{X: 600, Y: 3100, Width: 40, Height: 40},
+			PositionBand:  positionBelowFold,
+			VisualRole:    visualRoleBelowFoldMedia,
+		},
+	}
+
+	groups := []ResourceGroup{
+		{
+			ID:                 "group-cards",
+			Kind:               groupKindRepeatedGallery,
+			Label:              "Grid de tarjetas",
+			TotalBytes:         610_000,
+			ResourceCount:      2,
+			PositionBand:       "mixed",
+			RelatedResourceIDs: []string{"card-1", "card-2"},
+		},
+		{
+			ID:                 "group-fonts",
+			Kind:               groupKindFontCluster,
+			Label:              "Stack tipográfico",
+			TotalBytes:         237_000,
+			ResourceCount:      2,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"font-semibold", "font-bold"},
+		},
+		{
+			ID:                 "group-analytics",
+			Kind:               groupKindThirdParty,
+			Label:              "Cluster de analítica",
+			TotalBytes:         90_000,
+			ResourceCount:      1,
+			PositionBand:       positionUnknown,
+			RelatedResourceIDs: []string{"analytics"},
+		},
+	}
+
+	ranked, _ := rankVampireResources(resources, groups, sumBytes(resources))
+	if len(ranked) != 4 {
+		t.Fatalf("expected low-impact filler to be skipped, got %d vampires (%#v)", len(ranked), ranked)
+	}
+	for _, resource := range ranked {
+		if resource.ID == "avatar" {
+			t.Fatalf("expected low-impact avatar to stay out of vampires, got %#v", ranked)
+		}
 	}
 }
 

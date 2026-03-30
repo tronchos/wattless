@@ -152,6 +152,105 @@ func TestAssetTitleAvoidsOversizedLabelForTinyImages(t *testing.T) {
 	}
 }
 
+func TestBuildRuleBasedAssetInsightUsesLowImpactCopyForSmallOversizedImage(t *testing.T) {
+	draft := BuildRuleBasedAssetInsight(
+		ResourceContext{
+			ID:                    "avatar",
+			Type:                  "image",
+			Bytes:                 18_000,
+			EstimatedSavingsBytes: 9_000,
+			NaturalWidth:          500,
+			NaturalHeight:         500,
+			PositionBand:          "below_fold",
+			VisualRole:            "below_fold_media",
+		},
+		nil,
+		nil,
+	)
+
+	if draft.Title != "Imagen sobredimensionada, pero de bajo impacto" {
+		t.Fatalf("expected softer title for small image, got %q", draft.Title)
+	}
+	if !strings.Contains(strings.ToLower(draft.ShortProblem), "impacto total es limitado") {
+		t.Fatalf("expected softer short problem, got %q", draft.ShortProblem)
+	}
+	if !strings.Contains(strings.ToLower(draft.RecommendedAction), "variante más pequeña") {
+		t.Fatalf("expected recommendation to mention smaller variant, got %q", draft.RecommendedAction)
+	}
+}
+
+func TestSummarizeReportProvidesFixesBeyondPrimaryAction(t *testing.T) {
+	result, err := NewRuleBasedProvider().SummarizeReport(nil, ReportContext{
+		SiteProfile: SiteProfileContext{
+			FrameworkHint: "astro",
+		},
+		Analysis: AnalysisContext{
+			Findings: []AnalysisFindingContext{
+				{
+					ID:                    "repeated_gallery_overdelivery",
+					Category:              "media",
+					Severity:              "medium",
+					Confidence:            "high",
+					Title:                 "Comprime la galería repetida del catálogo",
+					Summary:               "La galería repetida suma demasiado peso.",
+					EstimatedSavingsBytes: 900_000,
+					RelatedResourceIDs:    []string{"card-1"},
+				},
+				{
+					ID:                    "third_party_analytics_overhead",
+					Category:              "third_party",
+					Severity:              "medium",
+					Confidence:            "high",
+					Title:                 "Recorta la sobrecarga de analítica",
+					Summary:               "La analítica añade ruido de red.",
+					EstimatedSavingsBytes: 80_000,
+					RelatedResourceIDs:    []string{"analytics"},
+				},
+				{
+					ID:                    "font_stack_overweight",
+					Category:              "fonts",
+					Severity:              "medium",
+					Confidence:            "medium",
+					Title:                 "Recorta el coste tipográfico",
+					Summary:               "Las fuentes pesan demasiado.",
+					EstimatedSavingsBytes: 60_000,
+					RelatedResourceIDs:    []string{"font-1"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected summarize error: %v", err)
+	}
+	if len(result.Insights.TopActions) != 3 {
+		t.Fatalf("expected 3 top actions, got %d", len(result.Insights.TopActions))
+	}
+	if result.Insights.TopActions[1].RecommendedFix == nil {
+		t.Fatal("expected secondary action to include a recommended fix")
+	}
+	if result.Insights.TopActions[2].RecommendedFix == nil {
+		t.Fatal("expected tertiary action to include a recommended fix")
+	}
+}
+
+func TestBuildExecutiveSummaryMentionsNearThresholdCPUWhenLeadingFinding(t *testing.T) {
+	summary := buildExecutiveSummary(ReportContext{
+		Analysis: AnalysisContext{
+			Findings: []AnalysisFindingContext{
+				{
+					ID:         "main_thread_cpu_pressure",
+					Severity:   "low",
+					Confidence: "low",
+				},
+			},
+		},
+	})
+
+	if !strings.Contains(strings.ToLower(summary), "cerca del umbral") {
+		t.Fatalf("expected summary to mention near-threshold cpu, got %q", summary)
+	}
+}
+
 func TestBuildRuleBasedAssetInsightDoesNotAttachUnanchoredCPUActionToScript(t *testing.T) {
 	asset := ResourceContext{
 		ID:   "visible-script",

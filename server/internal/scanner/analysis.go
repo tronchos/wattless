@@ -41,6 +41,12 @@ const (
 	thirdPartyVideo     = "video_embed"
 	thirdPartyPayment   = "payment"
 	thirdPartyUnknown   = "unknown"
+
+	nearThresholdLongTasksMS int64 = 200
+	mainThreadLongTasksMS    int64 = 250
+	materialVampireBytes     int64 = 32_000
+	materialVampireSavings   int64 = 16_000
+	minGuaranteedVisualVamps       = 2
 )
 
 func normalizeType(resourceType, mimeType, rawURL string) string {
@@ -850,11 +856,18 @@ func buildFontFinding(resources []enrichedResource, summary AnalysisSummary) *An
 }
 
 func buildMainThreadFinding(resources []enrichedResource, perf PerformanceMetrics) *AnalysisFinding {
-	if perf.LongTasksTotalMS < 250 {
+	if perf.LongTasksTotalMS < nearThresholdLongTasksMS {
 		return nil
 	}
 
+	confidence := "high"
 	severity := "medium"
+	summary := fmt.Sprintf("Se observaron %d long tasks que suman %d ms. Aquí el problema ya no es solo peso de red: hay trabajo real de CPU que compite con el render.", perf.LongTasksCount, perf.LongTasksTotalMS)
+	if perf.LongTasksTotalMS < mainThreadLongTasksMS {
+		confidence = "low"
+		severity = "low"
+		summary = fmt.Sprintf("Se observaron %d long tasks que suman %d ms. Está cerca del umbral donde la CPU empieza a competir con el render inicial, así que conviene vigilarlo porque puede oscilar entre scans.", perf.LongTasksCount, perf.LongTasksTotalMS)
+	}
 	if perf.LongTasksTotalMS >= 600 {
 		severity = "high"
 	}
@@ -867,9 +880,9 @@ func buildMainThreadFinding(resources []enrichedResource, perf PerformanceMetric
 		ID:         "main_thread_cpu_pressure",
 		Category:   "cpu",
 		Severity:   severity,
-		Confidence: "high",
+		Confidence: confidence,
 		Title:      "Reduce la presión real sobre la hebra principal",
-		Summary:    fmt.Sprintf("Se observaron %d long tasks que suman %d ms. Aquí el problema ya no es solo peso de red: hay trabajo real de CPU que compite con el render.", perf.LongTasksCount, perf.LongTasksTotalMS),
+		Summary:    summary,
 		Evidence: []string{
 			fmt.Sprintf("Long Tasks totales: %d ms.", perf.LongTasksTotalMS),
 			fmt.Sprintf("Cantidad de Long Tasks: %d.", perf.LongTasksCount),
@@ -1104,14 +1117,24 @@ func rankVampireResources(resources []enrichedResource, groups []ResourceGroup, 
 		if len(selected) >= 5 {
 			break
 		}
-		addSelected(resource)
+		if len(selected) >= 4 {
+			if _, ok := seededIDs[resource.ID]; !ok && !isMaterialVampireCandidate(resource) {
+				continue
+			}
+		}
+		if !addSelected(resource) {
+			continue
+		}
 	}
 
-	desiredVisualCount := minInt(2, countVisualResources(sorted))
+	desiredVisualCount := minInt(minGuaranteedVisualVamps, countMaterialVisualResources(sorted))
 	for countVisualResources(selected) < desiredVisualCount {
 		replaced := false
 		for _, visual := range sorted {
 			if visual.BoundingBox == nil {
+				continue
+			}
+			if !isMaterialVampireCandidate(visual) {
 				continue
 			}
 			if _, ok := selectedIDs[visual.ID]; ok {
@@ -1193,6 +1216,13 @@ func rankVampireResources(resources []enrichedResource, groups []ResourceGroup, 
 	}
 
 	return selected, warnings
+}
+
+func isMaterialVampireCandidate(resource enrichedResource) bool {
+	if vampirePriority(resource) >= 55 {
+		return true
+	}
+	return resource.Bytes >= materialVampireBytes || estimateResourceSavings(resource) >= materialVampireSavings
 }
 
 func vampirePriority(resource enrichedResource) int {
@@ -1389,6 +1419,19 @@ func countVisualResources(resources []enrichedResource) int {
 	count := 0
 	for _, resource := range resources {
 		if resource.BoundingBox != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func countMaterialVisualResources(resources []enrichedResource) int {
+	count := 0
+	for _, resource := range resources {
+		if resource.BoundingBox == nil {
+			continue
+		}
+		if isMaterialVampireCandidate(resource) {
 			count++
 		}
 	}

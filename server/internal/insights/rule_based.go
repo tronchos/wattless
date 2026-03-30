@@ -33,6 +33,8 @@ func (RuleBasedProvider) SuggestResource(resource ResourceContext) string {
 		return "Subconjunta la fuente, limita variantes y sirve solo WOFF2."
 	case resource.Type == "script":
 		return "Divide el script, difiere el código no crítico y vigila Long Tasks además del peso transferido."
+	case lightlyOversizedImage(resource):
+		return "Sirve una variante más pequeña para esta imagen. El impacto total es limitado, pero evita entregar mucha más resolución de la necesaria."
 	case resource.Type == "image":
 		return "Comprime y dimensiona este asset según su rol visual real, no solo por su peso bruto."
 	default:
@@ -61,7 +63,7 @@ func (provider RuleBasedProvider) SummarizeReport(_ context.Context, report Repo
 			RelatedResourceIDs:    append([]string(nil), finding.RelatedResourceIDs...),
 		}
 
-		if index == 0 && (finding.Confidence == "high" || finding.Confidence == "medium") {
+		if finding.Confidence == "high" || finding.Confidence == "medium" {
 			action.RecommendedFix = recommendedFixForFinding(report, finding)
 		}
 
@@ -171,6 +173,9 @@ func findingImpact(finding AnalysisFindingContext) string {
 		}
 		return "medium"
 	case "main_thread_cpu_pressure":
+		if finding.Severity == "low" || finding.Confidence == "low" {
+			return "low"
+		}
 		if finding.Severity == "high" {
 			return "high"
 		}
@@ -279,6 +284,11 @@ func buildExecutiveSummary(report ReportContext) string {
 		return "El cuello de botella principal está en el render crítico: Wattless detectó un recurso que coincide con el LCP y concentra el mejor retorno inmediato."
 	case top != nil && top.ID == "render_lcp_dom_node":
 		return "El cuello de botella principal está en el render crítico: Wattless detectó un nodo del DOM que domina el LCP y conviene revisar CSS, tipografía y CPU antes de culpar assets visuales."
+	case top != nil && top.ID == "main_thread_cpu_pressure":
+		if top.Confidence == "low" {
+			return "La presión de CPU aparece cerca del umbral en este scan. No es la señal más estable del informe, pero conviene vigilarla porque puede competir con el render inicial."
+		}
+		return "El peso de red no explica todo el problema: Wattless detectó presión real de CPU y Long Tasks que compiten con la experiencia inicial."
 	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
 		return "La home es rápida en el primer render, pero el catálogo visual por debajo del fold infla el coste por visita más de lo que parece."
 	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000:
@@ -294,11 +304,14 @@ func buildExecutiveSummary(report ReportContext) string {
 
 func buildPitchLine(report ReportContext) string {
 	gallery := dominantRepeatedGalleryGroup(report.Analysis.ResourceGroups)
+	top := firstFinding(report.Analysis.Findings)
 	switch {
 	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000 && gallery.PositionBand == "below_fold":
 		return "Tu arranque ya va bien; ahora toca recortar el coste visual acumulado bajo el fold para bajar bytes sin sacrificar UX."
 	case gallery != nil && gallery.TotalBytes >= 400_000 && report.Performance.LCPMS < 2_000:
 		return "Tu arranque ya va bien; ahora toca recortar el coste visual repetido del catálogo para bajar bytes sin sacrificar UX."
+	case top != nil && top.ID == "main_thread_cpu_pressure" && top.Confidence == "low":
+		return "La CPU ya enseña fricción cerca del umbral; vigilarla ahora evita que esa variabilidad termine empeorando el arranque."
 	case report.Analysis.Summary.AnalyticsBytes >= 80_000:
 		return "Separar render crítico de sobrecarga de terceros te da una mejora doble: menos variabilidad y menos CO2 por visita."
 	case report.Performance.LongTasksTotalMS >= 250:
@@ -441,6 +454,8 @@ func assetTitle(asset ResourceContext, finding *AnalysisFindingContext) string {
 		return "Media repetida en el catálogo"
 	case materiallyOversizedImage(asset):
 		return "Imagen sobredimensionada"
+	case lightlyOversizedImage(asset):
+		return "Imagen sobredimensionada, pero de bajo impacto"
 	case asset.Type == "script":
 		return "Script con presión innecesaria"
 	default:
@@ -487,6 +502,8 @@ func assetShortProblem(asset ResourceContext, finding *AnalysisFindingContext) s
 		return "Este asset domina el render crítico observado."
 	case asset.Type == "font":
 		return "El coste tipográfico de este archivo es alto para una primera visita."
+	case lightlyOversizedImage(asset):
+		return "Se sirve con más resolución de la necesaria, aunque su impacto total es limitado."
 	default:
 		return "Este asset concentra demasiado peso para el valor que aporta."
 	}
@@ -514,6 +531,8 @@ func assetWhyItMatters(asset ResourceContext, finding *AnalysisFindingContext) s
 		return "Los scripts pueden competir con el render y elevar Long Tasks aunque no sean el archivo más pesado."
 	case asset.VisualRole == "repeated_card_media":
 		return "Multiplicado por todo el grid, este patrón sube rápido el coste total por visita."
+	case lightlyOversizedImage(asset):
+		return "No cambia por sí sola la narrativa del informe, pero evita sobreentrega innecesaria y mantiene el sitio más disciplinado."
 	default:
 		return "Reducir este recurso mejora la eficiencia sin tocar partes del sitio menos relevantes."
 	}
@@ -608,6 +627,13 @@ func materiallyOversizedImage(asset ResourceContext) bool {
 		return false
 	}
 	return asset.Bytes >= 32_000 || asset.EstimatedSavingsBytes >= 16_000
+}
+
+func lightlyOversizedImage(asset ResourceContext) bool {
+	if asset.Type != "image" || asset.ResponsiveImage || asset.NaturalWidth <= 0 {
+		return false
+	}
+	return !materiallyOversizedImage(asset)
 }
 
 func normalizedFrameworkHint(value string) string {
