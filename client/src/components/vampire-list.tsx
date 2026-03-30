@@ -27,7 +27,7 @@ export const VampireList = memo(function VampireList({
     elements.find((element) => element.id === selectedElementID) ?? elements[0] ?? null;
 
   return (
-    <div className="space-y-6 flex flex-col h-full">
+    <div className="space-y-6 flex flex-col">
       <h2 className="text-2xl font-bold font-headline text-on-surface">Dominant Assets</h2>
 
       <div className="space-y-3">

@@ -253,13 +253,14 @@ export function ScanWorkbench() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-8">
+                  <div className="flex flex-col gap-6 w-full lg:pt-8">
                     <VampireList
                       elements={report.vampire_elements}
                       selectedElementID={selectedElementID}
                       capturedHeight={report.screenshot.captured_height}
                       onSelect={setSelectedElementID}
                     />
+                    
                     <InsightsPanel
                       report={report}
                       selectedElementID={selectedElementID}
