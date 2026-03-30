@@ -87,7 +87,8 @@ Reglas:
 - Escribe en español.
 - No inventes métricas fuera del contexto dado.
 - Máximo 3 acciones.
-- Cada acción debe referenciar un related_finding_id existente y al menos un related_resource_ids existente.
+- Cada acción debe referenciar un related_finding_id existente.
+- related_resource_ids puede estar vacío cuando no exista un anchor visible y veraz entre top_resources.
 - Los top_resources del contexto son también los focus_assets válidos para asset_insights.
 - asset_insights solo puede usar resource_id presentes en top_resources.
 - Máximo 1 asset_insight por resource_id.

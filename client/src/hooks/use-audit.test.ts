@@ -208,6 +208,273 @@ describe("useAudit", () => {
     expect(window.sessionStorage.getItem("wattless.active_scan_job")).toBeNull();
   });
 
+  it("does not auto-select a vampire from an unanchored top action", async () => {
+    vi.useFakeTimers();
+    mockSubmitScan.mockResolvedValueOnce({
+      job_id: "wl_job",
+      url: "https://example.com",
+      status: "queued",
+      position: 1,
+    });
+
+    const unanchoredReport: ScanReport = {
+      ...fakeReport,
+      insights: {
+        ...fakeReport.insights,
+        top_actions: [
+          {
+            id: "act-1",
+            related_finding_id: "repeated_gallery_overdelivery",
+            title: "Comprime la galería",
+            reason: "No hay anchor visible veraz.",
+            confidence: "high",
+            evidence: ["Grupo repetido fuera de los vampiros visibles."],
+            estimated_savings_bytes: 250000,
+            likely_lcp_impact: "low",
+            related_resource_ids: [],
+            recommended_fix: {
+              summary: "Optimiza el grid.",
+              optimized_code: "<Image />",
+              changes: ["Usa variantes responsivas"],
+              expected_impact: "Menos bytes.",
+            },
+          },
+        ],
+      },
+      vampire_elements: [
+        {
+          id: "avatar",
+          url: "https://example.com/avatar.webp",
+          type: "image",
+          mime_type: "image/webp",
+          hostname: "example.com",
+          party: "first_party",
+          status_code: 200,
+          bytes: 18000,
+          failed: false,
+          failure_reason: "",
+          transfer_share: 1,
+          estimated_savings_bytes: 12000,
+          position_band: "above_fold",
+          visual_role: "above_fold_media",
+          dom_tag: "img",
+          loading_attr: "",
+          fetch_priority: "",
+          responsive_image: false,
+          is_third_party_tool: false,
+          third_party_kind: "unknown",
+          asset_insight: {
+            source: "rule_based",
+            scope: "asset",
+            title: "Avatar",
+            short_problem: "Activo visible.",
+            why_it_matters: "Referencia base.",
+            recommended_action: "Revisar este recurso.",
+            confidence: "low",
+            likely_lcp_impact: "low",
+            evidence: [],
+          },
+          bounding_box: null,
+        },
+        {
+          id: "course-card",
+          url: "https://example.com/course.webp",
+          type: "image",
+          mime_type: "image/webp",
+          hostname: "example.com",
+          party: "first_party",
+          status_code: 200,
+          bytes: 220000,
+          failed: false,
+          failure_reason: "",
+          transfer_share: 10,
+          estimated_savings_bytes: 50000,
+          position_band: "below_fold",
+          visual_role: "repeated_card_media",
+          dom_tag: "img",
+          loading_attr: "",
+          fetch_priority: "",
+          responsive_image: false,
+          is_third_party_tool: false,
+          third_party_kind: "unknown",
+          asset_insight: {
+            source: "rule_based",
+            scope: "group",
+            title: "Tarjeta repetida",
+            short_problem: "Pertenece al grid.",
+            why_it_matters: "Se repite en catálogo.",
+            recommended_action: "Optimiza la galería.",
+            confidence: "high",
+            likely_lcp_impact: "low",
+            related_action_id: "act-1",
+            evidence: [],
+            recommended_fix: {
+              summary: "Optimiza el grid.",
+              optimized_code: "<Image />",
+              changes: ["Usa variantes responsivas"],
+              expected_impact: "Menos bytes.",
+            },
+          },
+          bounding_box: null,
+        },
+      ],
+    };
+
+    mockPollScanJob.mockResolvedValueOnce({
+      job_id: "wl_job",
+      url: "https://example.com",
+      status: "completed",
+      position: 0,
+      report: unanchoredReport,
+    });
+
+    const { result } = renderHook(() => useAudit());
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(result.current.report?.url).toBe("https://example.com");
+    expect(result.current.selectedElementID).toBe("avatar");
+  });
+
+  it("prefers the first anchored top action when earlier actions are informational", async () => {
+    vi.useFakeTimers();
+    mockSubmitScan.mockResolvedValueOnce({
+      job_id: "wl_job",
+      url: "https://example.com",
+      status: "queued",
+      position: 1,
+    });
+
+    const anchoredReport: ScanReport = {
+      ...fakeReport,
+      insights: {
+        ...fakeReport.insights,
+        top_actions: [
+          {
+            id: "act-1",
+            related_finding_id: "repeated_gallery_overdelivery",
+            title: "Acción editorial",
+            reason: "No hay anchor visible veraz.",
+            confidence: "high",
+            evidence: ["Sin anchor visible."],
+            estimated_savings_bytes: 250000,
+            likely_lcp_impact: "low",
+            related_resource_ids: [],
+          },
+          {
+            id: "act-2",
+            related_finding_id: "font_stack_overweight",
+            title: "Acción anclada",
+            reason: "Esta acción sí tiene un recurso visible asociado.",
+            confidence: "medium",
+            evidence: ["Fuente visible en vampires."],
+            estimated_savings_bytes: 50000,
+            likely_lcp_impact: "low",
+            related_resource_ids: ["font-1"],
+          },
+        ],
+      },
+      vampire_elements: [
+        {
+          id: "avatar",
+          url: "https://example.com/avatar.webp",
+          type: "image",
+          mime_type: "image/webp",
+          hostname: "example.com",
+          party: "first_party",
+          status_code: 200,
+          bytes: 18000,
+          failed: false,
+          failure_reason: "",
+          transfer_share: 1,
+          estimated_savings_bytes: 12000,
+          position_band: "above_fold",
+          visual_role: "above_fold_media",
+          dom_tag: "img",
+          loading_attr: "",
+          fetch_priority: "",
+          responsive_image: false,
+          is_third_party_tool: false,
+          third_party_kind: "unknown",
+          asset_insight: {
+            source: "rule_based",
+            scope: "asset",
+            title: "Avatar",
+            short_problem: "Activo visible.",
+            why_it_matters: "Referencia base.",
+            recommended_action: "Revisar este recurso.",
+            confidence: "low",
+            likely_lcp_impact: "low",
+            evidence: [],
+          },
+          bounding_box: null,
+        },
+        {
+          id: "font-1",
+          url: "https://example.com/font.woff2",
+          type: "font",
+          mime_type: "font/woff2",
+          hostname: "example.com",
+          party: "first_party",
+          status_code: 200,
+          bytes: 45000,
+          failed: false,
+          failure_reason: "",
+          transfer_share: 4,
+          estimated_savings_bytes: 15000,
+          position_band: "unknown",
+          visual_role: "unknown",
+          dom_tag: "",
+          loading_attr: "",
+          fetch_priority: "",
+          responsive_image: false,
+          is_third_party_tool: false,
+          third_party_kind: "unknown",
+          asset_insight: {
+            source: "rule_based",
+            scope: "group",
+            title: "Fuente pesada",
+            short_problem: "Fuente visible.",
+            why_it_matters: "Impacta el render.",
+            recommended_action: "Recortar tipografía.",
+            confidence: "medium",
+            likely_lcp_impact: "low",
+            related_action_id: "act-2",
+            evidence: [],
+          },
+          bounding_box: null,
+        },
+      ],
+    };
+
+    mockPollScanJob.mockResolvedValueOnce({
+      job_id: "wl_job",
+      url: "https://example.com",
+      status: "completed",
+      position: 0,
+      report: anchoredReport,
+    });
+
+    const { result } = renderHook(() => useAudit());
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(result.current.report?.url).toBe("https://example.com");
+    expect(result.current.selectedElementID).toBe("font-1");
+  });
+
   it("rehydrates an active job from sessionStorage", () => {
     window.sessionStorage.setItem(
       "wattless.active_scan_job",

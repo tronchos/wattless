@@ -18,22 +18,36 @@ export const scanProgressLabels = [
 const activeJobStorageKey = "wattless.active_scan_job";
 const pollIntervalMs = 1500;
 
+function isAnchoredAction(action: ScanReport["insights"]["top_actions"][number]): boolean {
+  return action.related_resource_ids.length > 0;
+}
+
 function resolvePreferredElement(report: ScanReport): VampireElement | null {
+  const anchoredActionIDs = new Set(
+    report.insights.top_actions.filter(isAnchoredAction).map((action) => action.id),
+  );
   const withFix = report.vampire_elements.find(
-    (element) => element.asset_insight.recommended_fix,
+    (element) =>
+      element.asset_insight.recommended_fix &&
+      (!element.asset_insight.related_action_id ||
+        anchoredActionIDs.has(element.asset_insight.related_action_id)),
   );
   if (withFix) {
     return withFix;
   }
 
-  const action = report.insights.top_actions[0];
-  if (action) {
+  for (const action of report.insights.top_actions) {
+    if (!isAnchoredAction(action)) {
+      continue;
+    }
     const matching = report.vampire_elements.find(
       (element) =>
         element.asset_insight.related_action_id === action.id ||
         action.related_resource_ids.includes(element.id),
     );
-    if (matching) return matching;
+    if (matching) {
+      return matching;
+    }
   }
   return report.vampire_elements[0] ?? null;
 }

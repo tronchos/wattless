@@ -435,8 +435,12 @@ func (s *Service) runBrowserScan(ctx context.Context, target PreparedTarget) ([]
 		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
 	}
 
-	if err := scrollToTop(page); err != nil {
+	scrollWarning, err := scrollToTopAndWait(ctx, page)
+	if err != nil {
 		return nil, PerformanceMetrics{}, Screenshot{}, SiteProfile{}, nil, err
+	}
+	if scrollWarning != "" {
+		warnings = append(warnings, scrollWarning)
 	}
 
 	snapshot, err := collectDOMSnapshot(page)
@@ -844,12 +848,75 @@ func scrollToTop(page *rod.Page) error {
 	return scrollTo(page, 0)
 }
 
+func scrollToTopAndWait(ctx context.Context, page *rod.Page) (string, error) {
+	if err := scrollToTop(page); err != nil {
+		return "", err
+	}
+
+	deadline := time.Now().Add(1200 * time.Millisecond)
+	for {
+		scrollY, err := readScrollY(page)
+		if err != nil {
+			return "", err
+		}
+		if scrollY == 0 {
+			if err := waitForNextPaint(ctx, page); err != nil {
+				return "", err
+			}
+			settledScrollY, err := readScrollY(page)
+			if err != nil {
+				return "", err
+			}
+			if settledScrollY == 0 {
+				return "", nil
+			}
+		}
+
+		if time.Now().After(deadline) {
+			return "Visual inspector snapshot could not fully return to the first viewport; fold and visibility hints may be less precise.", nil
+		}
+		if err := sleepWithContext(ctx, 50*time.Millisecond); err != nil {
+			return "", err
+		}
+		if err := scrollToTop(page); err != nil {
+			return "", err
+		}
+	}
+}
+
 func scrollTo(page *rod.Page, y int) error {
 	_, err := page.Evaluate(rod.Eval(`targetY => {
 		window.scrollTo(0, targetY);
 		return window.scrollY || document.documentElement.scrollTop || 0;
 	}`, y))
 	return err
+}
+
+func readScrollY(page *rod.Page) (int, error) {
+	result, err := page.Evaluate(rod.Eval(`() => Math.round(window.scrollY || document.documentElement.scrollTop || 0)`))
+	if err != nil {
+		return 0, err
+	}
+	return result.Value.Int(), nil
+}
+
+func waitForNextPaint(ctx context.Context, page *rod.Page) error {
+	done := make(chan error, 1)
+	go func() {
+		_, err := page.Evaluate(rod.Eval(`() => new Promise((resolve) => {
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => resolve(true));
+			});
+		})`))
+		done <- err
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
 }
 
 func sleepWithContext(ctx context.Context, wait time.Duration) error {
@@ -1160,13 +1227,6 @@ func sanitizeTopActions(actions []insights.TopAction, findings []AnalysisFinding
 				related = filterVisibleActionResourceIDs(finding.RelatedResourceIDs, visibleIDs)
 			}
 		}
-		if len(related) == 0 {
-			if shouldFallbackTopActionResourceID(output[index].RelatedFindingID) {
-				if fallback := fallbackTopActionResourceID(output[index].RelatedFindingID, vampires); fallback != "" {
-					related = []string{fallback}
-				}
-			}
-		}
 		output[index].RelatedResourceIDs = related
 	}
 
@@ -1187,58 +1247,6 @@ func filterVisibleActionResourceIDs(ids []string, visibleIDs map[string]struct{}
 		filtered = append(filtered, id)
 	}
 	return filtered
-}
-
-func shouldFallbackTopActionResourceID(findingID string) bool {
-	switch findingID {
-	case "responsive_image_overdelivery":
-		return false
-	default:
-		return true
-	}
-}
-
-func fallbackTopActionResourceID(findingID string, vampires []ResourceSummary) string {
-	for _, vampire := range vampires {
-		switch findingID {
-		case "render_lcp_candidate":
-			if vampire.VisualRole == visualRoleLCPCandidate || vampire.VisualRole == visualRoleHeroMedia || vampire.VisualRole == visualRoleAboveFoldMedia {
-				return vampire.ID
-			}
-		case "render_lcp_dom_node":
-			if vampire.Type == "font" || vampire.Type == "stylesheet" || vampire.Type == "script" {
-				return vampire.ID
-			}
-			if vampire.VisualRole == visualRoleLCPCandidate || vampire.VisualRole == visualRoleHeroMedia || vampire.VisualRole == visualRoleAboveFoldMedia {
-				return vampire.ID
-			}
-		case "repeated_gallery_overdelivery":
-			if vampire.VisualRole == visualRoleRepeatedCard || vampire.VisualRole == visualRoleBelowFoldMedia || vampire.Type == "image" {
-				return vampire.ID
-			}
-		case "third_party_analytics_overhead":
-			if vampire.IsThirdPartyTool && vampire.ThirdPartyKind == thirdPartyAnalytics {
-				return vampire.ID
-			}
-		case "font_stack_overweight":
-			if vampire.Type == "font" {
-				return vampire.ID
-			}
-		case "main_thread_cpu_pressure":
-			if vampire.Type == "script" {
-				return vampire.ID
-			}
-		case "heavy_above_fold_media":
-			if vampire.VisualRole == visualRoleHeroMedia || vampire.VisualRole == visualRoleAboveFoldMedia {
-				return vampire.ID
-			}
-		}
-	}
-
-	if len(vampires) == 0 {
-		return ""
-	}
-	return vampires[0].ID
 }
 
 func stringValue[T any](value *T, project func(*T) string) string {

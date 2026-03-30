@@ -364,8 +364,6 @@ func matchAssetFinding(asset ResourceContext, findings []AnalysisFindingContext)
 			candidates = append(candidates, finding)
 		case asset.IsThirdPartyTool && asset.ThirdPartyKind == "analytics" && finding.ID == "third_party_analytics_overhead":
 			candidates = append(candidates, finding)
-		case asset.Type == "script" && finding.ID == "main_thread_cpu_pressure":
-			candidates = append(candidates, finding)
 		}
 	}
 	for _, finding := range candidates {
@@ -382,14 +380,7 @@ func matchAssetAction(asset ResourceContext, actions []TopAction, finding *Analy
 			return &actions[index]
 		}
 	}
-	if finding == nil {
-		return nil
-	}
-	for index := range actions {
-		if actions[index].RelatedFindingID == finding.ID {
-			return &actions[index]
-		}
-	}
+	_ = finding
 	return nil
 }
 
@@ -419,7 +410,7 @@ func assetTitle(asset ResourceContext, finding *AnalysisFindingContext) string {
 		return "Candidato real al LCP"
 	case asset.VisualRole == "repeated_card_media":
 		return "Media repetida en el catálogo"
-	case asset.Type == "image" && !asset.ResponsiveImage && asset.NaturalWidth > 0:
+	case materiallyOversizedImage(asset):
 		return "Imagen sobredimensionada"
 	case asset.Type == "script":
 		return "Script con presión innecesaria"
@@ -581,6 +572,13 @@ func formatBytes(bytes int64) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+func materiallyOversizedImage(asset ResourceContext) bool {
+	if asset.Type != "image" || asset.ResponsiveImage || asset.NaturalWidth <= 0 {
+		return false
+	}
+	return asset.Bytes >= 32_000 || asset.EstimatedSavingsBytes >= 16_000
 }
 
 func normalizedFrameworkHint(value string) string {

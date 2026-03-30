@@ -75,6 +75,13 @@ func TestClassifyPositionBandTreatsFoldEdgeAsNearFold(t *testing.T) {
 	}
 }
 
+func TestClassifyPositionBandDoesNotUpgradeDeepPageAssetFromVisibleRatio(t *testing.T) {
+	box := &BoundingBox{Y: 3100, Height: 40}
+	if got := classifyPositionBand(box, 1, 900); got != positionBelowFold {
+		t.Fatalf("expected deep page asset to remain below fold, got %s", got)
+	}
+}
+
 func TestSummarizePositionBandUsesDeterministicPriority(t *testing.T) {
 	got := summarizePositionBand([]enrichedResource{
 		{PositionBand: positionNearFold},
@@ -342,7 +349,7 @@ func TestEstimateResourceSavingsUsesImageFormatAndOverdelivery(t *testing.T) {
 		NaturalHeight: 1080,
 		BoundingBox:   &BoundingBox{Width: 640, Height: 360},
 	}
-	if got := estimateResourceSavings(strongOverdelivery); got != 55_556 {
+	if got := estimateResourceSavings(strongOverdelivery); got != 50_000 {
 		t.Fatalf("expected responsive overdelivery savings, got %d", got)
 	}
 
@@ -354,8 +361,20 @@ func TestEstimateResourceSavingsUsesImageFormatAndOverdelivery(t *testing.T) {
 		NaturalHeight: 1080,
 		BoundingBox:   &BoundingBox{Width: 160, Height: 90},
 	}
-	if got := estimateResourceSavings(cappedOverdelivery); got != 70_000 {
+	if got := estimateResourceSavings(cappedOverdelivery); got != 50_000 {
 		t.Fatalf("expected capped image savings, got %d", got)
+	}
+
+	legacyPNG := enrichedResource{
+		Type:          "image",
+		MIMEType:      "image/png",
+		Bytes:         100_000,
+		NaturalWidth:  1920,
+		NaturalHeight: 1080,
+		BoundingBox:   &BoundingBox{Width: 160, Height: 90},
+	}
+	if got := estimateResourceSavings(legacyPNG); got != 60_000 {
+		t.Fatalf("expected legacy image cap, got %d", got)
 	}
 }
 
@@ -413,6 +432,109 @@ func TestBuildAnalysisDoesNotDuplicateHeavyMediaForMixedRepeatedGallery(t *testi
 	}
 	if hasFinding(analysis.Findings, "heavy_above_fold_media") {
 		t.Fatal("did not expect duplicate heavy above fold finding for repeated gallery members")
+	}
+}
+
+func TestRankVampireResourcesPrefersRepeatedGalleryCardOverDeepAvatar(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:            "card-1",
+			URL:           "https://example.com/courses/course-1.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         220_000,
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+			BoundingBox:   &BoundingBox{X: 0, Y: 950, Width: 414, Height: 233},
+		},
+		{
+			ID:            "card-2",
+			URL:           "https://example.com/courses/course-2.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         210_000,
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+			BoundingBox:   &BoundingBox{X: 420, Y: 970, Width: 414, Height: 233},
+		},
+		{
+			ID:            "card-3",
+			URL:           "https://example.com/courses/course-3.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         205_000,
+			NaturalWidth:  1920,
+			NaturalHeight: 1080,
+			BoundingBox:   &BoundingBox{X: 840, Y: 990, Width: 414, Height: 233},
+		},
+		{
+			ID:            "avatar",
+			URL:           "https://example.com/teachers/midu.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         18_000,
+			NaturalWidth:  500,
+			NaturalHeight: 500,
+			VisibleRatio:  1,
+			BoundingBox:   &BoundingBox{X: 0, Y: 3100, Width: 40, Height: 40},
+		},
+	}
+
+	annotated, _ := enrichResourcesForAnalysis(resources, PerformanceMetrics{}, 1440, 900)
+	ranked, _ := rankVampireResources(annotated, sumBytes(annotated))
+	if len(ranked) < 2 {
+		t.Fatalf("expected at least 2 ranked resources, got %d", len(ranked))
+	}
+	topLimit := minInt(len(ranked), 3)
+	foundCourseCard := false
+	for _, resource := range ranked[:topLimit] {
+		if resource.ID == "card-1" || resource.ID == "card-2" || resource.ID == "card-3" {
+			foundCourseCard = true
+			break
+		}
+	}
+	if !foundCourseCard {
+		t.Fatalf("expected a course card near the top of the ranking, got %#v", ranked)
+	}
+	for index, resource := range ranked {
+		if resource.ID == "avatar" && index == 0 {
+			t.Fatalf("expected deep avatar to lose against repeated gallery cards, got %#v", ranked)
+		}
+	}
+}
+
+func TestBuildAnalysisExcludesDeepAssetsFromAboveFoldBytesEvenIfVisibleRatioIsSet(t *testing.T) {
+	resources := []enrichedResource{
+		{
+			ID:            "avatar",
+			URL:           "https://example.com/teachers/midu.webp",
+			Type:          "image",
+			MIMEType:      "image/webp",
+			Hostname:      "example.com",
+			Party:         partyFirst,
+			Bytes:         18_000,
+			NaturalWidth:  500,
+			NaturalHeight: 500,
+			VisibleRatio:  1,
+			BoundingBox:   &BoundingBox{X: 0, Y: 3100, Width: 40, Height: 40},
+		},
+	}
+
+	annotated, groups := enrichResourcesForAnalysis(resources, PerformanceMetrics{}, 1440, 900)
+	if annotated[0].PositionBand != positionBelowFold {
+		t.Fatalf("expected deep avatar to be below fold, got %s", annotated[0].PositionBand)
+	}
+	analysis := buildAnalysis(annotated, PerformanceMetrics{}, groups)
+	if analysis.Summary.AboveFoldBytes != 0 {
+		t.Fatalf("expected deep asset to stay out of above fold bytes, got %d", analysis.Summary.AboveFoldBytes)
 	}
 }
 

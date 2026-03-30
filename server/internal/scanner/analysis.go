@@ -167,14 +167,31 @@ func baseImageSavingsFactor(mimeType string) float64 {
 	}
 }
 
+func maxImageSavingsFactor(mimeType string) float64 {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	switch {
+	case strings.Contains(mimeType, "svg"):
+		return 0
+	case strings.Contains(mimeType, "avif"):
+		return 0.50
+	case strings.Contains(mimeType, "webp"):
+		return 0.50
+	case strings.Contains(mimeType, "png"), strings.Contains(mimeType, "jpeg"), strings.Contains(mimeType, "jpg"):
+		return 0.60
+	default:
+		return 0.50
+	}
+}
+
 func imageSavingsFactor(resource enrichedResource) float64 {
 	factor := baseImageSavingsFactor(resource.MIMEType)
 	overdelivery := responsiveOverdeliveryFactor(resource)
 	if overdelivery > factor {
 		factor = overdelivery
 	}
-	if factor > 0.70 {
-		return 0.70
+	maxFactor := maxImageSavingsFactor(resource.MIMEType)
+	if factor > maxFactor {
+		return maxFactor
 	}
 	return factor
 }
@@ -228,20 +245,25 @@ func enrichResourcesForAnalysis(resources []enrichedResource, perf PerformanceMe
 	return annotated, groups
 }
 
-func classifyPositionBand(box *BoundingBox, visibleRatio float64, viewportHeight int) string {
+func classifyPositionBand(box *BoundingBox, _ float64, viewportHeight int) string {
 	if box == nil || viewportHeight <= 0 || box.Height <= 0 {
 		return positionUnknown
 	}
 
 	top := box.Y
 	bottom := box.Y + box.Height
-	secondViewportTop := float64(viewportHeight)
+	firstViewportBottom := float64(viewportHeight)
+	secondViewportTop := firstViewportBottom
 	secondViewportBottom := float64(viewportHeight * 2)
+	firstViewportVisibleHeight := math.Min(bottom, firstViewportBottom) - math.Max(top, 0)
+	if firstViewportVisibleHeight < 0 {
+		firstViewportVisibleHeight = 0
+	}
 
 	switch {
-	case visibleRatio >= 0.50:
+	case firstViewportVisibleHeight >= box.Height*0.50:
 		return positionAboveFold
-	case visibleRatio > 0:
+	case firstViewportVisibleHeight > 0:
 		return positionNearFold
 	case top < secondViewportBottom && bottom > secondViewportTop:
 		return positionNearFold

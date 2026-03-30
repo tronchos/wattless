@@ -13,7 +13,13 @@ export function InsightsPanel({
   selectedElementID,
   onSelectElement,
 }: InsightsPanelProps) {
+  const isAnchoredAction = (action: ScanReport["insights"]["top_actions"][number]) =>
+    action.related_resource_ids.length > 0;
+
   const resolveActionTargetID = (action: ScanReport["insights"]["top_actions"][number]) => {
+    if (!isAnchoredAction(action)) {
+      return null;
+    }
     const matchedByAssetInsight = report.vampire_elements.find(
       (element) => element.asset_insight.related_action_id === action.id,
     );
@@ -38,8 +44,14 @@ export function InsightsPanel({
         (selectedElement.asset_insight.related_action_id === action.id ||
           action.related_resource_ids.includes(selectedElement.id)),
     ) ??
-    compactActions[0] ??
     null;
+
+  const fallbackActiveAction =
+    !selectedElementID
+      ? compactActions.find((action) => isAnchoredAction(action)) ?? null
+      : null;
+
+  const resolvedActiveAction = activeAction ?? fallbackActiveAction;
 
   return (
     <section id="insights" className="surface-secondary rounded-[1.45rem] p-6 lg:p-8">
@@ -70,7 +82,7 @@ export function InsightsPanel({
                 const isActive = selectedElementID
                   ? selectedElement?.asset_insight.related_action_id === action.id ||
                     action.related_resource_ids.includes(selectedElementID)
-                  : action.id === activeAction?.id;
+                  : action.id === resolvedActiveAction?.id;
 
                 return (
                   <button

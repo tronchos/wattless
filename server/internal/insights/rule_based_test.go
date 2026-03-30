@@ -136,3 +136,64 @@ func TestRecommendedFixForFindingUsesAstroSnippetForGallery(t *testing.T) {
 		t.Fatalf("expected snippet to rely on firstRowCount, got %q", fix.OptimizedCode)
 	}
 }
+
+func TestAssetTitleAvoidsOversizedLabelForTinyImages(t *testing.T) {
+	title := assetTitle(ResourceContext{
+		ID:                    "avatar",
+		Type:                  "image",
+		Bytes:                 18_000,
+		EstimatedSavingsBytes: 12_000,
+		NaturalWidth:          500,
+		NaturalHeight:         500,
+	}, nil)
+
+	if title == "Imagen sobredimensionada" {
+		t.Fatalf("expected tiny image to avoid oversized label, got %q", title)
+	}
+}
+
+func TestBuildRuleBasedAssetInsightDoesNotAttachUnanchoredCPUActionToScript(t *testing.T) {
+	asset := ResourceContext{
+		ID:   "visible-script",
+		Type: "script",
+		URL:  "https://example.com/app.js",
+	}
+	draft := BuildRuleBasedAssetInsight(
+		asset,
+		[]AnalysisFindingContext{
+			{
+				ID:                 "main_thread_cpu_pressure",
+				Category:           "cpu",
+				Severity:           "medium",
+				Confidence:         "high",
+				Title:              "Reduce la presión real sobre la hebra principal",
+				Summary:            "Hay Long Tasks de arranque.",
+				RelatedResourceIDs: []string{"other-script"},
+			},
+		},
+		[]TopAction{
+			{
+				ID:                 "act-1",
+				RelatedFindingID:   "main_thread_cpu_pressure",
+				RelatedResourceIDs: nil,
+				Reason:             "Difiere el JS costoso.",
+				Confidence:         "high",
+				LikelyLCPImpact:    "medium",
+				RecommendedFix: &RecommendedFix{
+					Summary:       "Carga el script tras interacción.",
+					OptimizedCode: "setTimeout(loadHeavyModule, 0);",
+				},
+			},
+		},
+	)
+
+	if draft.RelatedFindingID != "" {
+		t.Fatalf("expected script without exact anchor to avoid inherited CPU finding, got %q", draft.RelatedFindingID)
+	}
+	if draft.RelatedActionID != "" {
+		t.Fatalf("expected script without exact anchor to avoid inherited CPU action, got %q", draft.RelatedActionID)
+	}
+	if draft.RecommendedFix != nil {
+		t.Fatal("expected script without exact anchor to avoid inherited CPU fix")
+	}
+}
