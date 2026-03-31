@@ -161,7 +161,7 @@ func makeInsightResource(resource ResourceSummary) insights.ResourceContext {
 		FailureReason:         resource.FailureReason,
 		TransferShare:         resource.TransferShare,
 		EstimatedSavingsBytes: resource.EstimatedSavingsBytes,
-		PositionBand:          resource.PositionBand,
+		PositionBand:          string(resource.PositionBand),
 		VisualRole:            resource.VisualRole,
 		DOMTag:                resource.DOMTag,
 		LoadingAttr:           resource.LoadingAttr,

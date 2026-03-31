@@ -27,7 +27,7 @@ type ResourceSummary struct {
 	FailureReason         string       `json:"failure_reason"`
 	TransferShare         float64      `json:"transfer_share"`
 	EstimatedSavingsBytes int64        `json:"estimated_savings_bytes"`
-	PositionBand          string       `json:"position_band"`
+	PositionBand          PositionBand `json:"position_band"`
 	VisualRole            string       `json:"visual_role"`
 	DOMTag                string       `json:"dom_tag"`
 	LoadingAttr           string       `json:"loading_attr"`
@@ -119,13 +119,13 @@ type AnalysisFinding struct {
 }
 
 type ResourceGroup struct {
-	ID                 string    `json:"id"`
-	Kind               GroupKind `json:"kind"`
-	Label              string    `json:"label"`
-	TotalBytes         int64     `json:"total_bytes"`
-	ResourceCount      int       `json:"resource_count"`
-	PositionBand       string    `json:"position_band"`
-	RelatedResourceIDs []string  `json:"related_resource_ids"`
+	ID                 string       `json:"id"`
+	Kind               GroupKind    `json:"kind"`
+	Label              string       `json:"label"`
+	TotalBytes         int64        `json:"total_bytes"`
+	ResourceCount      int          `json:"resource_count"`
+	PositionBand       PositionBand `json:"position_band"`
+	RelatedResourceIDs []string     `json:"related_resource_ids"`
 }
 
 type Analysis struct {

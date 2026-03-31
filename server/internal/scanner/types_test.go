@@ -55,8 +55,9 @@ func TestReportJSONIncludesMetaAndMethodology(t *testing.T) {
 
 func TestResourceSummaryPartyMarshalsAsString(t *testing.T) {
 	summary := ResourceSummary{
-		ID:    "hero",
-		Party: PartyFirst,
+		ID:           "hero",
+		Party:        PartyFirst,
+		PositionBand: PositionBandAboveFold,
 	}
 
 	raw, err := json.Marshal(summary)
@@ -67,12 +68,16 @@ func TestResourceSummaryPartyMarshalsAsString(t *testing.T) {
 	if !strings.Contains(string(raw), `"party":"first_party"`) {
 		t.Fatalf("expected party to keep string wire contract, got %s", string(raw))
 	}
+	if !strings.Contains(string(raw), `"position_band":"above_fold"`) {
+		t.Fatalf("expected position band to keep string wire contract, got %s", string(raw))
+	}
 }
 
 func TestResourceGroupKindMarshalsAsString(t *testing.T) {
 	group := ResourceGroup{
-		ID:   "gallery",
-		Kind: GroupKindRepeatedGallery,
+		ID:           "gallery",
+		Kind:         GroupKindRepeatedGallery,
+		PositionBand: PositionBandMixed,
 	}
 
 	raw, err := json.Marshal(group)
@@ -82,5 +87,8 @@ func TestResourceGroupKindMarshalsAsString(t *testing.T) {
 
 	if !strings.Contains(string(raw), `"kind":"repeated_gallery"`) {
 		t.Fatalf("expected kind to keep string wire contract, got %s", string(raw))
+	}
+	if !strings.Contains(string(raw), `"position_band":"mixed"`) {
+		t.Fatalf("expected group position band to keep string wire contract, got %s", string(raw))
 	}
 }

@@ -193,7 +193,7 @@ func buildDominantImageFinding(resources []enrichedResource, groups []ResourceGr
 		fmt.Sprintf("Tamaño natural: %dx%d para una caja aproximada de %.0fx%.0f.", candidate.NaturalWidth, candidate.NaturalHeight, boundingWidth(candidate.BoundingBox), boundingHeight(candidate.BoundingBox)),
 	}
 	if candidate.PositionBand != "" && candidate.PositionBand != positionUnknown {
-		evidence = append(evidence, fmt.Sprintf("Posición visual: %s.", strings.ReplaceAll(candidate.PositionBand, "_", " ")))
+		evidence = append(evidence, fmt.Sprintf("Posición visual: %s.", strings.ReplaceAll(string(candidate.PositionBand), "_", " ")))
 	}
 	if group != nil && groupHasMixedFormats(members) {
 		evidence = append(evidence, "Dentro del mismo bloque conviven formatos legacy y modernos.")
@@ -233,7 +233,7 @@ func buildLCPFinding(resources []enrichedResource, resource *enrichedResource, p
 			evidence = append(evidence, "El recurso LCP quedó mapeado, pero las métricas de render no se capturaron completas en este scan.")
 		}
 		if resource.PositionBand != "" && resource.PositionBand != positionUnknown {
-			evidence = append(evidence, fmt.Sprintf("Su posición es %s.", strings.ReplaceAll(resource.PositionBand, "_", " ")))
+			evidence = append(evidence, fmt.Sprintf("Su posición es %s.", strings.ReplaceAll(string(resource.PositionBand), "_", " ")))
 		}
 		if perf.LCPResourceTag != "" {
 			evidence = append(evidence, fmt.Sprintf("El nodo LCP es <%s>.", perf.LCPResourceTag))
@@ -344,7 +344,7 @@ func buildRepeatedGalleryFinding(groups []ResourceGroup, resources []enrichedRes
 	evidence := []string{
 		fmt.Sprintf("Grupo detectado: %s.", candidate.Label),
 		fmt.Sprintf("Transferencia agregada: %s en %d recursos.", humanBytes(candidate.TotalBytes), candidate.ResourceCount),
-		fmt.Sprintf("Posición dominante: %s.", strings.ReplaceAll(candidate.PositionBand, "_", " ")),
+		fmt.Sprintf("Posición dominante: %s.", strings.ReplaceAll(string(candidate.PositionBand), "_", " ")),
 		fmt.Sprintf("Imágenes sin srcset/sizes: %d de %d.", missingResponsive, len(members)),
 		fmt.Sprintf("Mediana natural/rendered: %s.", humanRatio(medianRatio)),
 	}
@@ -718,7 +718,7 @@ func buildResponsiveImageFinding(resources []enrichedResource, groups []Resource
 		fmt.Sprintf("Responsive imaging detectado: %t.", candidate.ResponsiveImage),
 	}
 	if candidate.PositionBand != "" && candidate.PositionBand != positionUnknown {
-		evidence = append(evidence, fmt.Sprintf("Posición visual: %s.", strings.ReplaceAll(candidate.PositionBand, "_", " ")))
+		evidence = append(evidence, fmt.Sprintf("Posición visual: %s.", strings.ReplaceAll(string(candidate.PositionBand), "_", " ")))
 	}
 
 	return &AnalysisFinding{

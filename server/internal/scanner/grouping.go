@@ -329,8 +329,8 @@ func thirdPartyGroupLabel(kind string) string {
 		return "Terceros"
 	}
 }
-func summarizePositionBand(resources []enrichedResource) string {
-	counts := map[string]int{}
+func summarizePositionBand(resources []enrichedResource) PositionBand {
+	counts := map[PositionBand]int{}
 	for _, resource := range resources {
 		counts[resource.PositionBand]++
 	}
@@ -344,7 +344,7 @@ func summarizePositionBand(resources []enrichedResource) string {
 	}
 	maxBand := positionUnknown
 	maxCount := 0
-	for _, band := range []string{
+	for _, band := range []PositionBand{
 		positionAboveFold,
 		positionNearFold,
 		positionBelowFold,
@@ -359,7 +359,7 @@ func summarizePositionBand(resources []enrichedResource) string {
 	if maxCount >= len(resources)-1 {
 		return maxBand
 	}
-	return "mixed"
+	return PositionBandMixed
 }
 func collectRepeatedGalleryMembers(groups []ResourceGroup) map[string]struct{} {
 	output := make(map[string]struct{})

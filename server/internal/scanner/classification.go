@@ -11,11 +11,6 @@ import (
 )
 
 const (
-	positionAboveFold = "above_fold"
-	positionNearFold  = "near_fold"
-	positionBelowFold = "below_fold"
-	positionUnknown   = "unknown"
-
 	visualRoleLCPCandidate   = "lcp_candidate"
 	visualRoleHeroMedia      = "hero_media"
 	visualRoleRepeatedCard   = "repeated_card_media"
@@ -53,6 +48,21 @@ const (
 	groupKindRepeatedGallery = GroupKindRepeatedGallery
 	groupKindThirdParty      = GroupKindThirdParty
 	groupKindFontCluster     = GroupKindFontCluster
+)
+
+type PositionBand string
+
+const (
+	PositionBandAboveFold PositionBand = "above_fold"
+	PositionBandNearFold  PositionBand = "near_fold"
+	PositionBandBelowFold PositionBand = "below_fold"
+	PositionBandUnknown   PositionBand = "unknown"
+	PositionBandMixed     PositionBand = "mixed"
+
+	positionAboveFold = PositionBandAboveFold
+	positionNearFold  = PositionBandNearFold
+	positionBelowFold = PositionBandBelowFold
+	positionUnknown   = PositionBandUnknown
 )
 
 func normalizeType(resourceType, mimeType, rawURL string) string {
@@ -206,7 +216,7 @@ func isKnownVendorHost(host string) bool {
 		"taboola", "outbrain", "criteo", "pubmatic", "adsrvr", "adnxs", "amazon-adsystem",
 	)
 }
-func classifyPositionBand(box *BoundingBox, _ float64, viewportHeight int) string {
+func classifyPositionBand(box *BoundingBox, _ float64, viewportHeight int) PositionBand {
 	if box == nil || viewportHeight <= 0 || box.Height <= 0 {
 		return positionUnknown
 	}

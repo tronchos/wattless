@@ -56,6 +56,7 @@ func TestMakeInsightAnalysisKeepsGroupKindWireStrings(t *testing.T) {
 				ID:                 "group-1",
 				Kind:               GroupKindRepeatedGallery,
 				Label:              "Grid de tarjetas",
+				PositionBand:       PositionBandMixed,
 				RelatedResourceIDs: []string{"img-1"},
 			},
 		},
@@ -67,6 +68,9 @@ func TestMakeInsightAnalysisKeepsGroupKindWireStrings(t *testing.T) {
 	}
 	if result.ResourceGroups[0].Kind != "repeated_gallery" {
 		t.Fatalf("expected string kind in insights bridge, got %q", result.ResourceGroups[0].Kind)
+	}
+	if result.ResourceGroups[0].PositionBand != "mixed" {
+		t.Fatalf("expected string position band in insights bridge, got %q", result.ResourceGroups[0].PositionBand)
 	}
 }
 

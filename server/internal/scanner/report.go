@@ -188,7 +188,7 @@ type enrichedResource struct {
 	NaturalHeight    int
 	VisibleRatio     float64
 	SelectorHint     string
-	PositionBand     string
+	PositionBand     PositionBand
 	VisualRole       string
 	IsThirdPartyTool bool
 	ThirdPartyKind   string
@@ -245,7 +245,7 @@ func makeInsightResources(resources []ResourceSummary) []insights.ResourceContex
 			FailureReason:         resource.FailureReason,
 			TransferShare:         resource.TransferShare,
 			EstimatedSavingsBytes: resource.EstimatedSavingsBytes,
-			PositionBand:          resource.PositionBand,
+			PositionBand:          string(resource.PositionBand),
 			VisualRole:            resource.VisualRole,
 			DOMTag:                resource.DOMTag,
 			LoadingAttr:           resource.LoadingAttr,
@@ -284,7 +284,7 @@ func makeInsightAnalysis(analysis Analysis) insights.AnalysisContext {
 			Label:              group.Label,
 			TotalBytes:         group.TotalBytes,
 			ResourceCount:      group.ResourceCount,
-			PositionBand:       group.PositionBand,
+			PositionBand:       string(group.PositionBand),
 			RelatedResourceIDs: append([]string(nil), group.RelatedResourceIDs...),
 		})
 	}
