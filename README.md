@@ -23,6 +23,8 @@ make prod          # http://localhost:8080
 
 Un solo binario Go sirve el frontend embebido, la API y el scanner. Sin Node runtime, sin CORS, sin coordinación de procesos.
 
+También puedes desplegar frontend y backend por separado. El frontend ya soporta `VITE_API_BASE_URL` para apuntar a una API remota y el backend acepta `CLIENT_ORIGIN` para CORS cross-domain.
+
 ## Build manual
 
 ```bash
@@ -88,11 +90,12 @@ Browser → Go binary (SPA estática + API + scanner)
 | `GEMINI_API_KEY` | — | API key de Gemini |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | Modelo de Gemini |
 
-### Frontend (solo dev)
+### Frontend
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `VITE_PROXY_TARGET` | `http://localhost:8080` | Backend para el proxy del dev server |
+| `VITE_API_BASE_URL` | — | Base pública de la API en producción. Usa el origen del backend, sin sufijo `/api`. |
 | `VITE_PUBLIC_APP_URL` | — | URL pública para exportación Markdown y metadata social |
 
 ## Limitaciones
@@ -101,3 +104,56 @@ Browser → Go binary (SPA estática + API + scanner)
 - El veredicto de hosting depende de la disponibilidad de The Green Web Foundation.
 - Algunos recursos no tienen anclaje visual y no pueden resaltarse sobre la captura.
 - El escáner solo acepta destinos públicos `http/https`; bloquea localhost, IPs privadas y hosts internos.
+
+## Deploy separado en Dokploy
+
+### Backend en Dokploy
+
+- Tipo: Dockerfile
+- Contexto: raíz del repo
+- Dockerfile recomendado: `docker/server-prod.Dockerfile`
+- Puerto: `8080`
+
+Variables mínimas:
+
+| Variable | Ejemplo |
+|----------|---------|
+| `CLIENT_ORIGIN` | `https://app.tudominio.com` |
+| `AI_PROVIDER` | `rule_based` o `gemini` |
+| `GEMINI_API_KEY` | `...` |
+| `GEMINI_MODEL` | `gemini-2.0-flash` |
+| `REQUEST_TIMEOUT` | `20s` |
+| `NAVIGATION_TIMEOUT` | `15s` |
+
+Notas:
+
+- `CLIENT_ORIGIN` acepta varios orígenes separados por coma si necesitas preview environments.
+- El backend debe publicarse bajo HTTPS si el frontend también usa HTTPS.
+- Si usas Gemini, `AI_PROVIDER=gemini` requiere `GEMINI_API_KEY`.
+
+### Frontend en Dokploy con Nixpacks
+
+- Tipo: Nixpacks
+- Directorio/app root: `client`
+- El repo ya incluye `client/nixpacks.toml`
+- Puerto: Dokploy inyecta `PORT` y el runtime lo respeta
+
+Variables mínimas:
+
+| Variable | Ejemplo |
+|----------|---------|
+| `VITE_API_BASE_URL` | `https://api.tudominio.com` |
+| `VITE_PUBLIC_APP_URL` | `https://app.tudominio.com` |
+
+Notas:
+
+- `VITE_API_BASE_URL` debe apuntar al origen del backend, no a `/api`.
+- El frontend sirve `dist` con fallback SPA y `GET /healthz`.
+- Si prefieres Railpack, puedes reutilizar los mismos scripts: `npm ci`, `npm run build`, `npm run start`.
+
+### Verificación recomendada
+
+1. Abre el frontend en `https://app.tudominio.com`.
+2. Envía un scan y confirma que `POST` y `GET` a `https://api.tudominio.com/api/v1/...` responden bien.
+3. Revisa en DevTools que no haya errores de CORS ni mixed content.
+4. Valida que el inspector visual cargue tiles desde `api.tudominio.com`.

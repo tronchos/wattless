@@ -239,10 +239,10 @@ export function ScanWorkbench() {
 
                 <section
                   id="diagnostic"
-                  className="grid grid-cols-1 lg:grid-cols-[1.45fr_1fr] gap-8 xl:gap-12 pt-2"
+                  className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] gap-8 xl:gap-12 pt-2"
                 >
-                  <div className="relative">
-                    <div className="sticky top-8">
+                  <div className="relative min-w-0">
+                    <div className="sticky top-8 w-full">
                       {reportJobId ? (
                         <ScreenshotInspector
                           jobId={reportJobId}
@@ -256,7 +256,7 @@ export function ScanWorkbench() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-6 w-full lg:pt-8">
+                  <div className="flex min-w-0 flex-col gap-6 w-full lg:pt-8">
                     <VampireList
                       elements={report.vampire_elements}
                       selectedElementID={selectedElementID}

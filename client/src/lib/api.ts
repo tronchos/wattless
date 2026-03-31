@@ -44,7 +44,7 @@ export class APIError extends Error {
 const clientIdentityStorageKey = "wattless.client_id";
 
 export async function submitScan(url: string): Promise<ScanJobResponse> {
-  const response = await fetch("/api/v1/scans", {
+  const response = await fetch(buildAPIURL("/api/v1/scans"), {
     method: "POST",
     headers: withClientIdentity({
       "Content-Type": "application/json",
@@ -57,7 +57,7 @@ export async function submitScan(url: string): Promise<ScanJobResponse> {
 }
 
 export async function pollScanJob(jobId: string): Promise<ScanJobResponse> {
-  const response = await fetch(`/api/v1/scans/${encodeURIComponent(jobId)}`, {
+  const response = await fetch(buildAPIURL(`/api/v1/scans/${encodeURIComponent(jobId)}`), {
     headers: withClientIdentity(),
     cache: "no-store",
   });
@@ -66,10 +66,13 @@ export async function pollScanJob(jobId: string): Promise<ScanJobResponse> {
 }
 
 export async function fetchInsights(jobId: string): Promise<ScanInsightsResponse | null> {
-  const response = await fetch(`/api/v1/scans/${encodeURIComponent(jobId)}/insights`, {
-    headers: withClientIdentity(),
-    cache: "no-store",
-  });
+  const response = await fetch(
+    buildAPIURL(`/api/v1/scans/${encodeURIComponent(jobId)}/insights`),
+    {
+      headers: withClientIdentity(),
+      cache: "no-store",
+    },
+  );
 
   if (response.status === 404) {
     const payload = (await response.json().catch(() => null)) as unknown;
@@ -93,7 +96,38 @@ export function buildScreenshotTileURL(jobId: string, tileIndex: number): string
     tile: String(tileIndex),
   });
 
-  return `/api/v1/scans/${encodeURIComponent(jobId)}/screenshot?${params.toString()}`;
+  return buildAPIURL(
+    `/api/v1/scans/${encodeURIComponent(jobId)}/screenshot?${params.toString()}`,
+  );
+}
+
+export function buildAPIURL(path: string): string {
+  const apiBaseURL = resolveAPIBaseURL();
+  if (!apiBaseURL) {
+    return path;
+  }
+
+  const normalizedPath = path.replace(/^\//, "");
+  return new URL(normalizedPath, `${apiBaseURL}/`).toString();
+}
+
+function resolveAPIBaseURL(): string | null {
+  const raw = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const url = new URL(raw);
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    if (url.pathname === "/api" || url.pathname === "/api/v1") {
+      url.pathname = "";
+    }
+
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
 }
 
 export function isScanReport(value: unknown): value is ScanReport {

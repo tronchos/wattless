@@ -73,8 +73,8 @@ export function ScreenshotInspector({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between">
+        <div className="min-w-0 flex-1">
           <h2
             id="visual-inspector-title"
             className="text-2xl font-bold font-headline text-on-surface"
@@ -87,7 +87,7 @@ export function ScreenshotInspector({
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-widest font-label">
+        <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-widest font-label xl:shrink-0">
           <span className="rounded-full bg-surface-container px-3 py-1.5 text-on-surface-variant">
             Documento {screenshot.document_width} x {screenshot.document_height}
           </span>

@@ -1,10 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { APIError, fetchInsights, formatResourceLabel, pollScanJob } from "./api";
+import {
+  APIError,
+  buildAPIURL,
+  buildScreenshotTileURL,
+  fetchInsights,
+  formatResourceLabel,
+  pollScanJob,
+  submitScan,
+} from "./api";
 
 describe("fetchInsights", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     window.localStorage.clear();
   });
 
@@ -163,6 +172,7 @@ describe("fetchInsights", () => {
 describe("pollScanJob", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     window.localStorage.clear();
   });
 
@@ -355,6 +365,56 @@ describe("pollScanJob", () => {
     expect(result.report?.screenshot.tiles).toEqual([]);
     expect(result.report?.methodology.assumptions).toEqual([]);
     expect(result.report?.warnings).toEqual([]);
+  });
+});
+
+describe("API base URL", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    window.localStorage.clear();
+  });
+
+  it("keeps relative URLs when no production API base is configured", () => {
+    expect(buildAPIURL("/api/v1/scans")).toBe("/api/v1/scans");
+    expect(buildScreenshotTileURL("wl_job", 2)).toBe("/api/v1/scans/wl_job/screenshot?tile=2");
+  });
+
+  it("uses the configured production API origin for scan and screenshot URLs", async () => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.wattless.example");
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          job_id: "wl_123",
+          url: "https://example.com",
+          status: "queued",
+          position: 1,
+        }),
+        {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await submitScan("https://example.com");
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://api.wattless.example/api/v1/scans",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(buildScreenshotTileURL("wl_job", 1)).toBe(
+      "https://api.wattless.example/api/v1/scans/wl_job/screenshot?tile=1",
+    );
+  });
+
+  it("tolerates an API base configured with /api suffix", () => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.wattless.example/api");
+
+    expect(buildAPIURL("/api/v1/scans/wl_job")).toBe(
+      "https://api.wattless.example/api/v1/scans/wl_job",
+    );
   });
 });
 

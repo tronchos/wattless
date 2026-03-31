@@ -234,6 +234,18 @@ describe("ScanWorkbench", () => {
     expect(screen.getByText("En espera")).toBeDefined();
     expect(screen.getByText("Hallazgos")).toBeDefined();
   });
+
+  it("keeps the diagnostic layout shrink-safe when the asset column contains long content", () => {
+    const { container } = render(<ScanWorkbench />);
+
+    const diagnosticSection = container.querySelector("#diagnostic");
+
+    expect(diagnosticSection?.className).toContain(
+      "lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]",
+    );
+    expect(diagnosticSection?.children[0]?.className).toContain("min-w-0");
+    expect(diagnosticSection?.children[1]?.className).toContain("min-w-0");
+  });
 });
 
 function hasDuplicateKeyWarning(spy: ReturnType<typeof vi.spyOn>): boolean {
