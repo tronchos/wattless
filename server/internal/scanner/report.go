@@ -280,7 +280,7 @@ func makeInsightAnalysis(analysis Analysis) insights.AnalysisContext {
 	for _, group := range analysis.ResourceGroups {
 		groups = append(groups, insights.ResourceGroupContext{
 			ID:                 group.ID,
-			Kind:               group.Kind,
+			Kind:               string(group.Kind),
 			Label:              group.Label,
 			TotalBytes:         group.TotalBytes,
 			ResourceCount:      group.ResourceCount,

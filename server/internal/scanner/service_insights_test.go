@@ -49,6 +49,27 @@ func TestSanitizeTopActionsPreservesFactualIDsAndAddsVisibleSubset(t *testing.T)
 	}
 }
 
+func TestMakeInsightAnalysisKeepsGroupKindWireStrings(t *testing.T) {
+	analysis := Analysis{
+		ResourceGroups: []ResourceGroup{
+			{
+				ID:                 "group-1",
+				Kind:               GroupKindRepeatedGallery,
+				Label:              "Grid de tarjetas",
+				RelatedResourceIDs: []string{"img-1"},
+			},
+		},
+	}
+
+	result := makeInsightAnalysis(analysis)
+	if len(result.ResourceGroups) != 1 {
+		t.Fatalf("expected 1 resource group, got %d", len(result.ResourceGroups))
+	}
+	if result.ResourceGroups[0].Kind != "repeated_gallery" {
+		t.Fatalf("expected string kind in insights bridge, got %q", result.ResourceGroups[0].Kind)
+	}
+}
+
 func TestSanitizeTopActionsLeavesVisibleSubsetEmptyWithoutMatch(t *testing.T) {
 	actions := []insights.TopAction{
 		{

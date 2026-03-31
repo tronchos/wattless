@@ -259,7 +259,7 @@ func vampireRankLess(left, right enrichedResource) bool {
 
 type vampireGroupRef struct {
 	ID   string
-	Kind string
+	Kind GroupKind
 }
 
 func buildVampireGroupRefs(groups []ResourceGroup) map[string][]vampireGroupRef {
@@ -272,7 +272,7 @@ func buildVampireGroupRefs(groups []ResourceGroup) map[string][]vampireGroupRef 
 	}
 	return refsByResourceID
 }
-func dominantGroupByKind(groups []ResourceGroup, kind string) *ResourceGroup {
+func dominantGroupByKind(groups []ResourceGroup, kind GroupKind) *ResourceGroup {
 	var candidate *ResourceGroup
 	for index := range groups {
 		group := &groups[index]
@@ -383,7 +383,7 @@ func decrementSelectedGroupCounts(resource enrichedResource, groupRefsByResource
 		selectedGroupCounts[ref.ID]--
 	}
 }
-func vampireGroupCap(kind string) int {
+func vampireGroupCap(kind GroupKind) int {
 	switch kind {
 	case groupKindRepeatedGallery:
 		return 2

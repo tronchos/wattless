@@ -24,10 +24,6 @@ const (
 	visualRoleDecorative     = "decorative"
 	visualRoleUnknown        = "unknown"
 
-	groupKindRepeatedGallery = "repeated_gallery"
-	groupKindThirdParty      = "third_party_cluster"
-	groupKindFontCluster     = "font_cluster"
-
 	thirdPartyAnalytics = "analytics"
 	thirdPartyAds       = "ads"
 	thirdPartySupport   = "support"
@@ -45,6 +41,18 @@ const (
 
 	partyFirst = PartyFirst
 	partyThird = PartyThird
+)
+
+type GroupKind string
+
+const (
+	GroupKindRepeatedGallery GroupKind = "repeated_gallery"
+	GroupKindThirdParty      GroupKind = "third_party_cluster"
+	GroupKindFontCluster     GroupKind = "font_cluster"
+
+	groupKindRepeatedGallery = GroupKindRepeatedGallery
+	groupKindThirdParty      = GroupKindThirdParty
+	groupKindFontCluster     = GroupKindFontCluster
 )
 
 func normalizeType(resourceType, mimeType, rawURL string) string {

@@ -119,13 +119,13 @@ type AnalysisFinding struct {
 }
 
 type ResourceGroup struct {
-	ID                 string   `json:"id"`
-	Kind               string   `json:"kind"`
-	Label              string   `json:"label"`
-	TotalBytes         int64    `json:"total_bytes"`
-	ResourceCount      int      `json:"resource_count"`
-	PositionBand       string   `json:"position_band"`
-	RelatedResourceIDs []string `json:"related_resource_ids"`
+	ID                 string    `json:"id"`
+	Kind               GroupKind `json:"kind"`
+	Label              string    `json:"label"`
+	TotalBytes         int64     `json:"total_bytes"`
+	ResourceCount      int       `json:"resource_count"`
+	PositionBand       string    `json:"position_band"`
+	RelatedResourceIDs []string  `json:"related_resource_ids"`
 }
 
 type Analysis struct {

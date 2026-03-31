@@ -68,3 +68,19 @@ func TestResourceSummaryPartyMarshalsAsString(t *testing.T) {
 		t.Fatalf("expected party to keep string wire contract, got %s", string(raw))
 	}
 }
+
+func TestResourceGroupKindMarshalsAsString(t *testing.T) {
+	group := ResourceGroup{
+		ID:   "gallery",
+		Kind: GroupKindRepeatedGallery,
+	}
+
+	raw, err := json.Marshal(group)
+	if err != nil {
+		t.Fatalf("marshal resource group: %v", err)
+	}
+
+	if !strings.Contains(string(raw), `"kind":"repeated_gallery"`) {
+		t.Fatalf("expected kind to keep string wire contract, got %s", string(raw))
+	}
+}
