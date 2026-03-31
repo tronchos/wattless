@@ -11,14 +11,6 @@ import (
 )
 
 const (
-	visualRoleLCPCandidate   = "lcp_candidate"
-	visualRoleHeroMedia      = "hero_media"
-	visualRoleRepeatedCard   = "repeated_card_media"
-	visualRoleAboveFoldMedia = "above_fold_media"
-	visualRoleBelowFoldMedia = "below_fold_media"
-	visualRoleDecorative     = "decorative"
-	visualRoleUnknown        = "unknown"
-
 	thirdPartyAnalytics = "analytics"
 	thirdPartyAds       = "ads"
 	thirdPartySupport   = "support"
@@ -63,6 +55,26 @@ const (
 	positionNearFold  = PositionBandNearFold
 	positionBelowFold = PositionBandBelowFold
 	positionUnknown   = PositionBandUnknown
+)
+
+type VisualRole string
+
+const (
+	VisualRoleLCPCandidate   VisualRole = "lcp_candidate"
+	VisualRoleHeroMedia      VisualRole = "hero_media"
+	VisualRoleRepeatedCard   VisualRole = "repeated_card_media"
+	VisualRoleAboveFoldMedia VisualRole = "above_fold_media"
+	VisualRoleBelowFoldMedia VisualRole = "below_fold_media"
+	VisualRoleDecorative     VisualRole = "decorative"
+	VisualRoleUnknown        VisualRole = "unknown"
+
+	visualRoleLCPCandidate   = VisualRoleLCPCandidate
+	visualRoleHeroMedia      = VisualRoleHeroMedia
+	visualRoleRepeatedCard   = VisualRoleRepeatedCard
+	visualRoleAboveFoldMedia = VisualRoleAboveFoldMedia
+	visualRoleBelowFoldMedia = VisualRoleBelowFoldMedia
+	visualRoleDecorative     = VisualRoleDecorative
+	visualRoleUnknown        = VisualRoleUnknown
 )
 
 func normalizeType(resourceType, mimeType, rawURL string) string {
@@ -277,7 +289,7 @@ func containsAny(value string, tokens ...string) bool {
 	}
 	return false
 }
-func classifyVisualRole(resource enrichedResource, perf PerformanceMetrics, viewportWidth, viewportHeight int, repeatedGalleryMembers map[string]struct{}) string {
+func classifyVisualRole(resource enrichedResource, perf PerformanceMetrics, viewportWidth, viewportHeight int, repeatedGalleryMembers map[string]struct{}) VisualRole {
 	if perf.LCPResourceURL != "" && sameAsset(resource.URL, perf.LCPResourceURL) {
 		return visualRoleLCPCandidate
 	}

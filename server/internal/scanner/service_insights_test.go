@@ -74,6 +74,22 @@ func TestMakeInsightAnalysisKeepsGroupKindWireStrings(t *testing.T) {
 	}
 }
 
+func TestMakeInsightResourceKeepsVisualRoleWireStrings(t *testing.T) {
+	resource := ResourceSummary{
+		ID:           "hero",
+		PositionBand: PositionBandAboveFold,
+		VisualRole:   VisualRoleHeroMedia,
+	}
+
+	result := makeInsightResource(resource)
+	if result.PositionBand != "above_fold" {
+		t.Fatalf("expected string position band in resource bridge, got %q", result.PositionBand)
+	}
+	if result.VisualRole != "hero_media" {
+		t.Fatalf("expected string visual role in resource bridge, got %q", result.VisualRole)
+	}
+}
+
 func TestSanitizeTopActionsLeavesVisibleSubsetEmptyWithoutMatch(t *testing.T) {
 	actions := []insights.TopAction{
 		{

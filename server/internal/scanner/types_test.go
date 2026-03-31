@@ -58,6 +58,7 @@ func TestResourceSummaryPartyMarshalsAsString(t *testing.T) {
 		ID:           "hero",
 		Party:        PartyFirst,
 		PositionBand: PositionBandAboveFold,
+		VisualRole:   VisualRoleHeroMedia,
 	}
 
 	raw, err := json.Marshal(summary)
@@ -70,6 +71,9 @@ func TestResourceSummaryPartyMarshalsAsString(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"position_band":"above_fold"`) {
 		t.Fatalf("expected position band to keep string wire contract, got %s", string(raw))
+	}
+	if !strings.Contains(string(raw), `"visual_role":"hero_media"`) {
+		t.Fatalf("expected visual role to keep string wire contract, got %s", string(raw))
 	}
 }
 

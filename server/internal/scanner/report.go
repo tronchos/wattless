@@ -189,7 +189,7 @@ type enrichedResource struct {
 	VisibleRatio     float64
 	SelectorHint     string
 	PositionBand     PositionBand
-	VisualRole       string
+	VisualRole       VisualRole
 	IsThirdPartyTool bool
 	ThirdPartyKind   string
 }
@@ -246,7 +246,7 @@ func makeInsightResources(resources []ResourceSummary) []insights.ResourceContex
 			TransferShare:         resource.TransferShare,
 			EstimatedSavingsBytes: resource.EstimatedSavingsBytes,
 			PositionBand:          string(resource.PositionBand),
-			VisualRole:            resource.VisualRole,
+			VisualRole:            string(resource.VisualRole),
 			DOMTag:                resource.DOMTag,
 			LoadingAttr:           resource.LoadingAttr,
 			FetchPriority:         resource.FetchPriority,

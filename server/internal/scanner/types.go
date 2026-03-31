@@ -28,7 +28,7 @@ type ResourceSummary struct {
 	TransferShare         float64      `json:"transfer_share"`
 	EstimatedSavingsBytes int64        `json:"estimated_savings_bytes"`
 	PositionBand          PositionBand `json:"position_band"`
-	VisualRole            string       `json:"visual_role"`
+	VisualRole            VisualRole   `json:"visual_role"`
 	DOMTag                string       `json:"dom_tag"`
 	LoadingAttr           string       `json:"loading_attr"`
 	FetchPriority         string       `json:"fetch_priority"`

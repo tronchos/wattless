@@ -768,7 +768,7 @@ func buildHeavyAboveFoldFinding(resources []enrichedResource, perf PerformanceMe
 		Summary:    fmt.Sprintf("Hay media above the fold de %s que compite con el primer render. No necesariamente domina el LCP, pero sí engorda el arranque visible.", humanBytes(candidate.Bytes)),
 		Evidence: []string{
 			fmt.Sprintf("Recurso above the fold: %s.", humanBytes(candidate.Bytes)),
-			fmt.Sprintf("Rol visual detectado: %s.", strings.ReplaceAll(candidate.VisualRole, "_", " ")),
+			fmt.Sprintf("Rol visual detectado: %s.", strings.ReplaceAll(string(candidate.VisualRole), "_", " ")),
 		},
 		EstimatedSavingsBytes: estimateResourceSavings(*candidate),
 		RelatedResourceIDs:    []string{candidate.ID},
