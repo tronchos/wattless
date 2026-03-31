@@ -1,12 +1,12 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
-import tsconfigPaths from "vite-tsconfig-paths";
 import {
   resolveAbsolutePublicAssetURL,
   resolvePublicAppURL,
 } from "./public-meta";
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
+  const { default: tsconfigPaths } = await import("vite-tsconfig-paths");
   const env = loadEnv(mode, process.cwd(), "");
   const proxyTarget = env.VITE_PROXY_TARGET?.trim() || "http://localhost:8080";
   const publicAppURL = resolvePublicAppURL(env.VITE_PUBLIC_APP_URL);
