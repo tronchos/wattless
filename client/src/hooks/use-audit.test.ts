@@ -363,6 +363,62 @@ describe("useAudit", () => {
     expect(result.current.selectedElementID).toBe("avatar");
   });
 
+  it("tolerates malformed action anchors while applying a completed report", async () => {
+    vi.useFakeTimers();
+    mockSubmitScan.mockResolvedValueOnce({
+      job_id: "wl_job",
+      url: "https://example.com",
+      status: "queued",
+      position: 1,
+    });
+
+    const malformedReport = {
+      ...fakeReport,
+      insights: {
+        ...fakeReport.insights,
+        top_actions: [
+          {
+            id: "act-1",
+            related_finding_id: "repeated_gallery_overdelivery",
+            title: "Acción con payload legado",
+            reason: "El servidor devolvió null en arrays internos.",
+            confidence: "high",
+            evidence: null,
+            estimated_savings_bytes: 250000,
+            likely_lcp_impact: "low",
+            related_resource_ids: null,
+            visible_related_resource_ids: null,
+          },
+        ],
+      },
+    } as unknown as ScanReport;
+
+    mockPollScanJob.mockResolvedValueOnce({
+      job_id: "wl_job",
+      url: "https://example.com",
+      status: "completed",
+      position: 0,
+      report: malformedReport,
+    });
+
+    const { result } = renderHook(() => useAudit());
+
+    act(() => {
+      result.current.setInputURL("https://example.com");
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(result.current.report?.url).toBe("https://example.com");
+    expect(result.current.selectedElementID).toBeNull();
+  });
+
   it("prefers the first anchored top action when earlier actions are informational", async () => {
     vi.useFakeTimers();
     mockSubmitScan.mockResolvedValueOnce({

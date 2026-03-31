@@ -63,51 +63,55 @@ export function FindingsPanel({ findings }: FindingsPanelProps) {
         </div>
 
         <div className="mt-10 grid gap-6 xl:grid-cols-2">
-          {findings.map((finding) => (
-            <article
-              key={finding.id}
-              className="bg-surface-container rounded-3xl p-6 border border-outline-variant/5 flex flex-col hover:border-outline-variant/20 transition-colors"
-            >
-              <div className="flex flex-wrap items-center gap-2.5 mb-5">
-                <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase tracking-widest font-label font-bold border ${getSeverityAccent(finding.severity)}`}>
-                  {formatSeverityLabel(finding.severity)}
-                </span>
-                <span className="px-2.5 py-1 rounded-md text-[10px] uppercase tracking-widest font-label font-bold bg-surface-container-highest text-on-surface-variant border border-outline-variant/10">
-                  {formatConfidenceLabel(finding.confidence)}
-                </span>
-                {finding.estimated_savings_bytes > 0 && (
-                  <span className="px-2.5 py-1 rounded-md text-[10px] uppercase tracking-widest font-label font-bold bg-primary/10 text-primary border border-primary/20 ml-auto flex items-center gap-1">
-                    <Zap className="w-3 h-3" />
-                    {formatBytes(finding.estimated_savings_bytes)}
+          {findings.map((finding) => {
+            const evidence = Array.isArray(finding.evidence) ? finding.evidence : [];
+
+            return (
+              <article
+                key={finding.id}
+                className="bg-surface-container rounded-3xl p-6 border border-outline-variant/5 flex flex-col hover:border-outline-variant/20 transition-colors"
+              >
+                <div className="flex flex-wrap items-center gap-2.5 mb-5">
+                  <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase tracking-widest font-label font-bold border ${getSeverityAccent(finding.severity)}`}>
+                    {formatSeverityLabel(finding.severity)}
                   </span>
+                  <span className="px-2.5 py-1 rounded-md text-[10px] uppercase tracking-widest font-label font-bold bg-surface-container-highest text-on-surface-variant border border-outline-variant/10">
+                    {formatConfidenceLabel(finding.confidence)}
+                  </span>
+                  {finding.estimated_savings_bytes > 0 && (
+                    <span className="px-2.5 py-1 rounded-md text-[10px] uppercase tracking-widest font-label font-bold bg-primary/10 text-primary border border-primary/20 ml-auto flex items-center gap-1">
+                      <Zap className="w-3 h-3" />
+                      {formatBytes(finding.estimated_savings_bytes)}
+                    </span>
+                  )}
+                </div>
+
+                <h3 className="text-xl font-headline font-bold text-on-surface leading-snug">
+                  {finding.title}
+                </h3>
+                <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
+                  {finding.summary}
+                </p>
+
+                {evidence.length > 0 && (
+                  <details className="mt-auto pt-6 group">
+                    <summary className="text-[10px] tracking-widest uppercase font-label text-on-surface-variant font-semibold cursor-pointer list-none flex items-center justify-between hover:text-primary transition-colors bg-surface-container-low p-2 rounded-lg">
+                      <span>Ver Evidencia ({evidence.length})</span>
+                      <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
+                    </summary>
+                    <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-on-surface bg-surface-container-low p-5 rounded-2xl border border-outline-variant/5">
+                      {evidence.map((item, index) => (
+                        <li key={`${finding.id}-${index}`} className="flex items-start gap-2.5">
+                          <ChevronRight className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                          <span className="font-medium opacity-90">{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
-              </div>
-
-              <h3 className="text-xl font-headline font-bold text-on-surface leading-snug">
-                {finding.title}
-              </h3>
-              <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
-                {finding.summary}
-              </p>
-
-              {finding.evidence.length > 0 && (
-                <details className="mt-auto pt-6 group">
-                  <summary className="text-[10px] tracking-widest uppercase font-label text-on-surface-variant font-semibold cursor-pointer list-none flex items-center justify-between hover:text-primary transition-colors bg-surface-container-low p-2 rounded-lg">
-                    <span>Ver Evidencia ({finding.evidence.length})</span>
-                    <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
-                  </summary>
-                  <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-on-surface bg-surface-container-low p-5 rounded-2xl border border-outline-variant/5">
-                    {finding.evidence.map((item, index) => (
-                      <li key={`${finding.id}-${index}`} className="flex items-start gap-2.5">
-                        <ChevronRight className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span className="font-medium opacity-90">{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>

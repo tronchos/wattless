@@ -210,6 +210,97 @@ func TestSanitizeTopActionsFallsBackToFindingIDsWhenActionOmitsThem(t *testing.T
 	}
 }
 
+func TestNormalizeReportEnsuresSlicesAreNeverNil(t *testing.T) {
+	report := normalizeReport(Report{
+		SiteProfile: SiteProfile{},
+		Insights: insights.ScanInsights{
+			TopActions: []insights.TopAction{
+				{
+					ID:                        "act-1",
+					Evidence:                  nil,
+					RelatedResourceIDs:        nil,
+					VisibleRelatedResourceIDs: nil,
+					RecommendedFix: &insights.RecommendedFix{
+						Summary: "Fix",
+					},
+				},
+			},
+		},
+		VampireElements: []ResourceSummary{
+			{
+				ID: "asset-1",
+				AssetInsight: AssetInsight{
+					Evidence: nil,
+					RecommendedFix: &FixSuggestion{
+						Summary: "Fix",
+					},
+				},
+			},
+		},
+		Analysis: Analysis{
+			Findings: []AnalysisFinding{
+				{
+					ID:                 "finding-1",
+					Evidence:           nil,
+					RelatedResourceIDs: nil,
+				},
+			},
+			ResourceGroups: []ResourceGroup{
+				{
+					ID:                 "group-1",
+					RelatedResourceIDs: nil,
+				},
+			},
+		},
+	})
+
+	if report.SiteProfile.Evidence == nil || len(report.SiteProfile.Evidence) == 0 {
+		t.Fatalf("expected site profile evidence fallback, got %#v", report.SiteProfile.Evidence)
+	}
+	if report.BreakdownByType == nil {
+		t.Fatal("expected breakdown_by_type to be normalized to an empty slice")
+	}
+	if report.BreakdownByParty == nil {
+		t.Fatal("expected breakdown_by_party to be normalized to an empty slice")
+	}
+	if report.Warnings == nil {
+		t.Fatal("expected warnings to be normalized to an empty slice")
+	}
+	if report.Screenshot.Tiles == nil {
+		t.Fatal("expected screenshot tiles to be normalized to an empty slice")
+	}
+	if report.Methodology.Assumptions == nil {
+		t.Fatal("expected methodology assumptions to be normalized to an empty slice")
+	}
+	if report.Insights.TopActions[0].Evidence == nil {
+		t.Fatal("expected top action evidence to be normalized to an empty slice")
+	}
+	if report.Insights.TopActions[0].RelatedResourceIDs == nil {
+		t.Fatal("expected top action related ids to be normalized to an empty slice")
+	}
+	if report.Insights.TopActions[0].VisibleRelatedResourceIDs == nil {
+		t.Fatal("expected visible related ids to be normalized to an empty slice")
+	}
+	if report.Insights.TopActions[0].RecommendedFix == nil || report.Insights.TopActions[0].RecommendedFix.Changes == nil {
+		t.Fatalf("expected top action fix changes to be normalized, got %#v", report.Insights.TopActions[0].RecommendedFix)
+	}
+	if report.VampireElements[0].AssetInsight.Evidence == nil {
+		t.Fatal("expected asset insight evidence to be normalized to an empty slice")
+	}
+	if report.VampireElements[0].AssetInsight.RecommendedFix == nil || report.VampireElements[0].AssetInsight.RecommendedFix.Changes == nil {
+		t.Fatalf("expected asset fix changes to be normalized, got %#v", report.VampireElements[0].AssetInsight.RecommendedFix)
+	}
+	if report.Analysis.Findings[0].Evidence == nil {
+		t.Fatal("expected finding evidence to be normalized to an empty slice")
+	}
+	if report.Analysis.Findings[0].RelatedResourceIDs == nil {
+		t.Fatal("expected finding related ids to be normalized to an empty slice")
+	}
+	if report.Analysis.ResourceGroups[0].RelatedResourceIDs == nil {
+		t.Fatal("expected resource group related ids to be normalized to an empty slice")
+	}
+}
+
 func TestAttachAssetInsightsIgnoresInvalidDraftsAndFallsBackPerAsset(t *testing.T) {
 	vampires := []ResourceSummary{
 		{

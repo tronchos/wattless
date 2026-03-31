@@ -113,6 +113,7 @@ func (s *Service) ApplyInsights(report *Report, result insights.ProviderResult) 
 		report.Insights.TopActions,
 		result.AssetInsights,
 	)
+	*report = normalizeReport(*report)
 }
 
 func hasMaterialInsights(result insights.ProviderResult) bool {

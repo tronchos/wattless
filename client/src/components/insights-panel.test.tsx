@@ -194,4 +194,38 @@ describe("InsightsPanel", () => {
 
     expect(screen.getByText(/Generando insights con IA/i)).toBeTruthy();
   });
+
+  it("renders safely when legacy payloads contain null action arrays", () => {
+    const malformedReport = {
+      ...makeReport(),
+      insights: {
+        ...makeReport().insights,
+        top_actions: [
+          {
+            id: "act-legacy",
+            related_finding_id: "finding-1",
+            title: "Acción legado",
+            reason: "Arrays internos nulos.",
+            confidence: "medium",
+            evidence: null,
+            estimated_savings_bytes: 1200,
+            likely_lcp_impact: "low",
+            related_resource_ids: null,
+            visible_related_resource_ids: null,
+          },
+        ],
+      },
+    } as unknown as ScanReport;
+
+    render(
+      <InsightsPanel
+        report={malformedReport}
+        insightsStatus="none"
+        selectedElementID={null}
+        onSelectElement={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/Acción legado/i)).toBeTruthy();
+  });
 });

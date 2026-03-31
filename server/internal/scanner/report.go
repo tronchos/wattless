@@ -114,6 +114,7 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 	s.ApplyInsights(&report, providerResult)
 
 	report.Meta = buildMeta(startedAt, time.Now())
+	report = normalizeReport(report)
 
 	return report, nil
 }
@@ -222,6 +223,123 @@ func normalizeSiteProfile(profile SiteProfile) SiteProfile {
 	}
 	return profile
 }
+func normalizeReport(report Report) Report {
+	report.SiteProfile = normalizeSiteProfile(report.SiteProfile)
+	report.BreakdownByType = normalizeResourceBreakdowns(report.BreakdownByType)
+	report.BreakdownByParty = normalizeResourceBreakdowns(report.BreakdownByParty)
+	report.Insights = normalizeScanInsightsShape(report.Insights)
+	report.VampireElements = normalizeResourceSummariesShape(report.VampireElements)
+	report.Analysis = normalizeAnalysisShape(report.Analysis)
+	report.Screenshot = normalizeScreenshotShape(report.Screenshot)
+	report.Methodology = normalizeMethodologyShape(report.Methodology)
+	report.Warnings = normalizeStrings(report.Warnings)
+	return report
+}
+
+func normalizeResourceBreakdowns(items []ResourceBreakdown) []ResourceBreakdown {
+	if items == nil {
+		return []ResourceBreakdown{}
+	}
+	return items
+}
+
+func normalizeScanInsightsShape(scanInsights insights.ScanInsights) insights.ScanInsights {
+	scanInsights.TopActions = normalizeTopActionsShape(scanInsights.TopActions)
+	return scanInsights
+}
+
+func normalizeTopActionsShape(actions []insights.TopAction) []insights.TopAction {
+	if actions == nil {
+		return []insights.TopAction{}
+	}
+
+	for index := range actions {
+		actions[index].Evidence = normalizeStrings(actions[index].Evidence)
+		actions[index].RelatedResourceIDs = normalizeStrings(actions[index].RelatedResourceIDs)
+		actions[index].VisibleRelatedResourceIDs = normalizeStrings(actions[index].VisibleRelatedResourceIDs)
+		actions[index].RecommendedFix = normalizeRecommendedFix(actions[index].RecommendedFix)
+	}
+
+	return actions
+}
+
+func normalizeResourceSummariesShape(items []ResourceSummary) []ResourceSummary {
+	if items == nil {
+		return []ResourceSummary{}
+	}
+
+	for index := range items {
+		items[index].AssetInsight = normalizeAssetInsightShape(items[index].AssetInsight)
+	}
+
+	return items
+}
+
+func normalizeAssetInsightShape(asset AssetInsight) AssetInsight {
+	asset.Evidence = normalizeStrings(asset.Evidence)
+	asset.RecommendedFix = normalizeRecommendedFix(asset.RecommendedFix)
+	return asset
+}
+
+func normalizeAnalysisShape(analysis Analysis) Analysis {
+	analysis.Findings = normalizeAnalysisFindingsShape(analysis.Findings)
+	analysis.ResourceGroups = normalizeResourceGroupsShape(analysis.ResourceGroups)
+	return analysis
+}
+
+func normalizeAnalysisFindingsShape(findings []AnalysisFinding) []AnalysisFinding {
+	if findings == nil {
+		return []AnalysisFinding{}
+	}
+
+	for index := range findings {
+		findings[index].Evidence = normalizeStrings(findings[index].Evidence)
+		findings[index].RelatedResourceIDs = normalizeStrings(findings[index].RelatedResourceIDs)
+	}
+
+	return findings
+}
+
+func normalizeResourceGroupsShape(groups []ResourceGroup) []ResourceGroup {
+	if groups == nil {
+		return []ResourceGroup{}
+	}
+
+	for index := range groups {
+		groups[index].RelatedResourceIDs = normalizeStrings(groups[index].RelatedResourceIDs)
+	}
+
+	return groups
+}
+
+func normalizeScreenshotShape(screenshot Screenshot) Screenshot {
+	if screenshot.Tiles == nil {
+		screenshot.Tiles = []ScreenshotTile{}
+	}
+	return screenshot
+}
+
+func normalizeMethodologyShape(methodology Methodology) Methodology {
+	methodology.Assumptions = normalizeStrings(methodology.Assumptions)
+	return methodology
+}
+
+func normalizeRecommendedFix(fix *FixSuggestion) *FixSuggestion {
+	if fix == nil {
+		return nil
+	}
+
+	fix.Changes = normalizeStrings(fix.Changes)
+	return fix
+}
+
+func normalizeStrings(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
 func makeInsightResources(resources []ResourceSummary) []insights.ResourceContext {
 	output := make([]insights.ResourceContext, 0, len(resources))
 	for _, resource := range resources {
@@ -305,7 +423,7 @@ func sanitizeInsightReport(result insights.ScanInsights, findings []AnalysisFind
 }
 func sanitizeTopActions(actions []insights.TopAction, findings []AnalysisFinding, vampires []ResourceSummary) []insights.TopAction {
 	if len(actions) == 0 {
-		return actions
+		return normalizeTopActionsShape(actions)
 	}
 
 	visibleIDs := make(map[string]struct{}, len(vampires))
@@ -330,7 +448,7 @@ func sanitizeTopActions(actions []insights.TopAction, findings []AnalysisFinding
 		output[index].VisibleRelatedResourceIDs = filterVisibleActionResourceIDs(related, visibleIDs)
 	}
 
-	return output
+	return normalizeTopActionsShape(output)
 }
 func dedupeActionResourceIDs(ids []string) []string {
 	filtered := make([]string, 0, len(ids))

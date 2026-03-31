@@ -220,7 +220,7 @@ func (q *Queue) GetInsights(_ context.Context, jobID string) (InsightsResponse, 
 					JobID:           job.ID,
 					Status:          InsightsStatusReady,
 					Insights:        &reportInsights,
-					VampireElements: append([]scanner.ResourceSummary(nil), report.VampireElements...),
+					VampireElements: cloneResourceSummaries(report.VampireElements),
 				}, nil
 			case InsightsStatusFailed:
 				return InsightsResponse{JobID: job.ID, Status: InsightsStatusFailed}, nil
@@ -613,7 +613,9 @@ func cloneResourceBreakdowns(items []scanner.ResourceBreakdown) []scanner.Resour
 		return nil
 	}
 
-	return append([]scanner.ResourceBreakdown(nil), items...)
+	cloned := make([]scanner.ResourceBreakdown, len(items))
+	copy(cloned, items)
+	return cloned
 }
 
 func cloneScanInsights(scanInsights insights.ScanInsights) insights.ScanInsights {
@@ -698,7 +700,9 @@ func cloneScreenshot(screenshot scanner.Screenshot) scanner.Screenshot {
 		return screenshot
 	}
 
-	screenshot.Tiles = append([]scanner.ScreenshotTile(nil), screenshot.Tiles...)
+	tiles := screenshot.Tiles
+	screenshot.Tiles = make([]scanner.ScreenshotTile, len(tiles))
+	copy(screenshot.Tiles, tiles)
 	return screenshot
 }
 
@@ -722,5 +726,7 @@ func cloneStrings(values []string) []string {
 		return nil
 	}
 
-	return append([]string(nil), values...)
+	cloned := make([]string, len(values))
+	copy(cloned, values)
+	return cloned
 }

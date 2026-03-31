@@ -665,3 +665,90 @@ func sequentialID() func() string {
 		return fmt.Sprintf("wl_test_%d", nextID)
 	}
 }
+
+func TestCloneReportPreservesEmptySlices(t *testing.T) {
+	report := &scanner.Report{
+		BreakdownByType:  []scanner.ResourceBreakdown{},
+		BreakdownByParty: []scanner.ResourceBreakdown{},
+		Insights: insights.ScanInsights{
+			TopActions: []insights.TopAction{
+				{
+					ID:                        "act-1",
+					Evidence:                  []string{},
+					RelatedResourceIDs:        []string{},
+					VisibleRelatedResourceIDs: []string{},
+					RecommendedFix: &scanner.FixSuggestion{
+						Changes: []string{},
+					},
+				},
+			},
+		},
+		VampireElements: []scanner.ResourceSummary{},
+		Analysis: scanner.Analysis{
+			Findings: []scanner.AnalysisFinding{
+				{
+					ID:                 "finding-1",
+					Evidence:           []string{},
+					RelatedResourceIDs: []string{},
+				},
+			},
+			ResourceGroups: []scanner.ResourceGroup{
+				{
+					ID:                 "group-1",
+					RelatedResourceIDs: []string{},
+				},
+			},
+		},
+		Screenshot: scanner.Screenshot{
+			Tiles: []scanner.ScreenshotTile{},
+		},
+		Methodology: scanner.Methodology{
+			Assumptions: []string{},
+		},
+		Warnings: []string{},
+	}
+
+	cloned := cloneReport(report)
+	if cloned == nil {
+		t.Fatal("expected cloned report")
+	}
+	if cloned.BreakdownByType == nil {
+		t.Fatal("expected empty breakdown_by_type slice to stay non-nil")
+	}
+	if cloned.BreakdownByParty == nil {
+		t.Fatal("expected empty breakdown_by_party slice to stay non-nil")
+	}
+	if cloned.Insights.TopActions[0].Evidence == nil {
+		t.Fatal("expected empty top action evidence slice to stay non-nil")
+	}
+	if cloned.Insights.TopActions[0].RelatedResourceIDs == nil {
+		t.Fatal("expected empty related ids slice to stay non-nil")
+	}
+	if cloned.Insights.TopActions[0].VisibleRelatedResourceIDs == nil {
+		t.Fatal("expected empty visible related ids slice to stay non-nil")
+	}
+	if cloned.Insights.TopActions[0].RecommendedFix == nil || cloned.Insights.TopActions[0].RecommendedFix.Changes == nil {
+		t.Fatalf("expected empty recommended fix changes slice to stay non-nil, got %#v", cloned.Insights.TopActions[0].RecommendedFix)
+	}
+	if cloned.VampireElements == nil {
+		t.Fatal("expected empty vampire elements slice to stay non-nil")
+	}
+	if cloned.Analysis.Findings[0].Evidence == nil {
+		t.Fatal("expected empty finding evidence slice to stay non-nil")
+	}
+	if cloned.Analysis.Findings[0].RelatedResourceIDs == nil {
+		t.Fatal("expected empty finding related ids slice to stay non-nil")
+	}
+	if cloned.Analysis.ResourceGroups[0].RelatedResourceIDs == nil {
+		t.Fatal("expected empty resource group related ids slice to stay non-nil")
+	}
+	if cloned.Screenshot.Tiles == nil {
+		t.Fatal("expected empty screenshot tiles slice to stay non-nil")
+	}
+	if cloned.Methodology.Assumptions == nil {
+		t.Fatal("expected empty methodology assumptions slice to stay non-nil")
+	}
+	if cloned.Warnings == nil {
+		t.Fatal("expected empty warnings slice to stay non-nil")
+	}
+}

@@ -15,8 +15,19 @@ export function InsightsPanel({
   selectedElementID,
   onSelectElement,
 }: InsightsPanelProps) {
+  const getVisibleRelatedResourceIDs = (
+    action: ScanReport["insights"]["top_actions"][number],
+  ) =>
+    Array.isArray(action.visible_related_resource_ids)
+      ? action.visible_related_resource_ids
+      : [];
+
+  const getActionEvidence = (
+    action: ScanReport["insights"]["top_actions"][number],
+  ) => (Array.isArray(action.evidence) ? action.evidence : []);
+
   const isAnchoredAction = (action: ScanReport["insights"]["top_actions"][number]) =>
-    action.visible_related_resource_ids.length > 0;
+    getVisibleRelatedResourceIDs(action).length > 0;
 
   const resolveActionTargetID = (action: ScanReport["insights"]["top_actions"][number]) => {
     if (!isAnchoredAction(action)) {
@@ -30,7 +41,7 @@ export function InsightsPanel({
     }
 
     const matching = report.vampire_elements.find((element) =>
-      action.visible_related_resource_ids.includes(element.id)
+      getVisibleRelatedResourceIDs(action).includes(element.id)
     );
     return matching?.id ?? null;
   };
@@ -44,7 +55,7 @@ export function InsightsPanel({
       (action) =>
         selectedElement &&
         (selectedElement.asset_insight.related_action_id === action.id ||
-          action.visible_related_resource_ids.includes(selectedElement.id)),
+          getVisibleRelatedResourceIDs(action).includes(selectedElement.id)),
     ) ??
     null;
 
@@ -90,8 +101,9 @@ export function InsightsPanel({
               {compactActions.map((action) => {
                 const isActive = selectedElementID
                   ? selectedElement?.asset_insight.related_action_id === action.id ||
-                    action.visible_related_resource_ids.includes(selectedElementID)
+                    getVisibleRelatedResourceIDs(action).includes(selectedElementID)
                   : action.id === resolvedActiveAction?.id;
+                const evidence = getActionEvidence(action);
 
                 return (
                   <button
@@ -123,9 +135,9 @@ export function InsightsPanel({
                     <p className="mt-2 text-sm leading-6 text-slate-300">
                       {action.reason}
                     </p>
-                    {action.evidence[0] ? (
+                    {evidence[0] ? (
                       <p className="mt-2 text-xs leading-5 text-slate-400">
-                        {action.evidence[0]}
+                        {evidence[0]}
                       </p>
                     ) : null}
                     {isProcessing ? (
