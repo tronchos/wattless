@@ -7,28 +7,37 @@ import type { ScanJobResponse, ScanReport } from "@/lib/types";
 vi.mock("@/lib/api", () => ({
   submitScan: vi.fn(),
   pollScanJob: vi.fn(),
+  fetchInsights: vi.fn(),
   APIError: class APIError extends Error {
     status: number;
     retryAfterSeconds: number | null;
+    code: string | null;
     job?: ScanJobResponse;
 
     constructor(
       message: string,
-      options: { status: number; retryAfterSeconds?: number | null; job?: ScanJobResponse },
+      options: {
+        status: number;
+        retryAfterSeconds?: number | null;
+        code?: string | null;
+        job?: ScanJobResponse;
+      },
     ) {
       super(message);
       this.name = "APIError";
       this.status = options.status;
       this.retryAfterSeconds = options.retryAfterSeconds ?? null;
+      this.code = options.code ?? null;
       this.job = options.job;
     }
   },
 }));
 
-import { APIError, pollScanJob, submitScan } from "@/lib/api";
+import { APIError, fetchInsights, pollScanJob, submitScan } from "@/lib/api";
 
 const mockSubmitScan = vi.mocked(submitScan);
 const mockPollScanJob = vi.mocked(pollScanJob);
+const mockFetchInsights = vi.mocked(fetchInsights);
 
 const fakeReport = {
   url: "https://example.com",
@@ -113,6 +122,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
   window.sessionStorage.clear();
+  mockFetchInsights.mockResolvedValue(null);
 });
 
 describe("useAudit", () => {
@@ -630,5 +640,192 @@ describe("useAudit", () => {
     expect(result.current.report?.url).toBe("https://example.com");
     expect(result.current.scanError).toBeNull();
     expect(result.current.isScanning).toBe(false);
+  });
+
+  it("polls async insights and overlays the enriched report", async () => {
+    vi.useFakeTimers();
+    mockSubmitScan.mockResolvedValueOnce({
+      job_id: "wl_job",
+      url: "https://example.com",
+      status: "queued",
+      position: 1,
+    });
+    mockFetchInsights
+      .mockResolvedValueOnce({
+        job_id: "wl_job",
+        status: "processing",
+      })
+      .mockResolvedValueOnce({
+        job_id: "wl_job",
+        status: "ready",
+        insights: {
+          ...fakeReport.insights,
+          provider: "gemini",
+          executive_summary: "Resumen Gemini",
+        },
+        vampire_elements: [
+          {
+            id: "hero",
+            url: "https://example.com/hero.webp",
+            type: "image",
+            mime_type: "image/webp",
+            hostname: "example.com",
+            party: "first_party",
+            status_code: 200,
+            bytes: 200000,
+            failed: false,
+            failure_reason: "",
+            transfer_share: 10,
+            estimated_savings_bytes: 50000,
+            position_band: "above_fold",
+            visual_role: "hero_media",
+            dom_tag: "img",
+            loading_attr: "",
+            fetch_priority: "",
+            responsive_image: true,
+            is_third_party_tool: false,
+            third_party_kind: "unknown",
+            asset_insight: {
+              source: "gemini",
+              scope: "asset",
+              title: "Hero optimizable",
+              short_problem: "Resumen Gemini",
+              why_it_matters: "Empuja el arranque.",
+              recommended_action: "Comprime la hero.",
+              confidence: "medium",
+              likely_lcp_impact: "medium",
+              evidence: [],
+            },
+            bounding_box: null,
+          },
+        ],
+      });
+
+    const baseReportWithVampire: ScanReport = {
+      ...fakeReport,
+      vampire_elements: [
+        {
+          id: "hero",
+          url: "https://example.com/hero.webp",
+          type: "image",
+          mime_type: "image/webp",
+          hostname: "example.com",
+          party: "first_party",
+          status_code: 200,
+          bytes: 200000,
+          failed: false,
+          failure_reason: "",
+          transfer_share: 10,
+          estimated_savings_bytes: 50000,
+          position_band: "above_fold",
+          visual_role: "hero_media",
+          dom_tag: "img",
+          loading_attr: "",
+          fetch_priority: "",
+          responsive_image: true,
+          is_third_party_tool: false,
+          third_party_kind: "unknown",
+          asset_insight: {
+            source: "rule_based",
+            scope: "asset",
+            title: "Hero pesada",
+            short_problem: "Base rule-based",
+            why_it_matters: "Empuja el arranque.",
+            recommended_action: "Comprime la hero.",
+            confidence: "medium",
+            likely_lcp_impact: "medium",
+            evidence: [],
+          },
+          bounding_box: null,
+        },
+      ],
+    };
+    mockPollScanJob.mockResolvedValueOnce({
+      job_id: "wl_job",
+      url: "https://example.com",
+      status: "completed",
+      position: 0,
+      report: baseReportWithVampire,
+    });
+
+    const { result } = renderHook(() => useAudit());
+
+    act(() => {
+      result.current.setInputURL("https://example.com");
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(result.current.insightsStatus).toBe("processing");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(mockFetchInsights).toHaveBeenCalledWith("wl_job");
+    expect(result.current.insightsStatus).toBe("ready");
+    expect(result.current.report?.insights.provider).toBe("gemini");
+    expect(result.current.report?.insights.executive_summary).toBe("Resumen Gemini");
+  });
+
+  it("rehydrates the last completed job from sessionStorage and resumes insights polling", async () => {
+    vi.useFakeTimers();
+    window.sessionStorage.setItem("wattless.last_completed_scan_job", "wl_completed");
+    mockPollScanJob.mockResolvedValueOnce({
+      job_id: "wl_completed",
+      url: "https://example.com",
+      status: "completed",
+      position: 0,
+      report: fakeReport,
+    });
+    mockFetchInsights.mockResolvedValueOnce({
+      job_id: "wl_completed",
+      status: "processing",
+    });
+
+    const { result } = renderHook(() => useAudit());
+
+    await act(async () => {
+      await vi.runAllTicks();
+    });
+
+    expect(mockPollScanJob).toHaveBeenCalledWith("wl_completed");
+    expect(result.current.reportJobId).toBe("wl_completed");
+    expect(result.current.report?.url).toBe("https://example.com");
+    expect(result.current.insightsStatus).toBe("processing");
+  });
+
+  it("stops polling insights and clears persisted recovery state when the completed job no longer exists", async () => {
+    vi.useFakeTimers();
+    window.sessionStorage.setItem("wattless.last_completed_scan_job", "wl_gone");
+    mockPollScanJob.mockResolvedValueOnce({
+      job_id: "wl_gone",
+      url: "https://example.com",
+      status: "completed",
+      position: 0,
+      report: fakeReport,
+    });
+    mockFetchInsights.mockRejectedValueOnce(
+      new APIError("No encontramos ese turno.", {
+        status: 404,
+        code: "job_not_found",
+      }),
+    );
+
+    const { result } = renderHook(() => useAudit());
+
+    await act(async () => {
+      await vi.runAllTicks();
+    });
+
+    expect(result.current.report?.url).toBe("https://example.com");
+    expect(window.sessionStorage.getItem("wattless.last_completed_scan_job")).toBeNull();
+    expect(result.current.insightsStatus).toBe("none");
   });
 });

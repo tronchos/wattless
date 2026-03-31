@@ -1,10 +1,26 @@
 package scanner
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/tronchos/wattless/server/internal/insights"
 )
+
+type stubInsightsProvider struct {
+	name   string
+	result insights.ProviderResult
+	err    error
+}
+
+func (s stubInsightsProvider) Name() string { return s.name }
+
+func (s stubInsightsProvider) SuggestResource(resource insights.ResourceContext) string { return "" }
+
+func (s stubInsightsProvider) SummarizeReport(ctx context.Context, report insights.ReportContext) (insights.ProviderResult, error) {
+	return s.result, s.err
+}
 
 func TestSanitizeTopActionsPreservesFactualIDsAndAddsVisibleSubset(t *testing.T) {
 	actions := []insights.TopAction{
@@ -337,5 +353,210 @@ func TestAttachAssetInsightsDoesNotLetUnrelatedAvatarInheritGalleryAction(t *tes
 	}
 	if enriched[0].AssetInsight.RecommendedFix != nil {
 		t.Fatal("expected unrelated avatar to avoid inheriting gallery fix")
+	}
+}
+
+func TestBuildReportContextUsesCurrentReportShape(t *testing.T) {
+	service := &Service{}
+	report := Report{
+		URL:                   "https://example.com",
+		Score:                 "B",
+		TotalBytesTransferred: 321_000,
+		CO2GramsPerVisit:      0.32,
+		HostingIsGreen:        true,
+		HostingVerdict:        "green",
+		HostedBy:              "Green Host",
+		SiteProfile: SiteProfile{
+			FrameworkHint: "astro",
+			Evidence:      []string{"astro marker"},
+		},
+		Summary: Summary{
+			TotalRequests:         12,
+			SuccessfulRequests:    12,
+			FailedRequests:        0,
+			FirstPartyBytes:       200_000,
+			ThirdPartyBytes:       121_000,
+			PotentialSavingsBytes: 80_000,
+			VisualMappedVampires:  1,
+		},
+		Performance: PerformanceMetrics{
+			LoadMS:                   1200,
+			DOMContentLoadedMS:       600,
+			ScriptResourceDurationMS: 200,
+			LCPMS:                    1400,
+			FCPMS:                    700,
+			RenderMetricsComplete:    true,
+			LongTasksTotalMS:         80,
+			LongTasksCount:           2,
+			LCPResourceURL:           "https://example.com/hero.webp",
+			LCPResourceTag:           "img",
+			LCPSelectorHint:          ".hero img",
+			LCPSize:                  180_000,
+		},
+		Analysis: Analysis{
+			Summary: AnalysisSummary{
+				AboveFoldVisualBytes: 180_000,
+				BelowFoldBytes:       90_000,
+				RenderCriticalBytes:  190_000,
+			},
+			Findings: []AnalysisFinding{
+				{
+					ID:                 "render_lcp_candidate",
+					Category:           "render",
+					Severity:           "high",
+					Confidence:         "high",
+					Title:              "Hero pesada",
+					Summary:            "La hero empuja el LCP.",
+					RelatedResourceIDs: []string{"hero"},
+				},
+			},
+		},
+		VampireElements: []ResourceSummary{
+			{
+				ID:                    "hero",
+				URL:                   "https://example.com/hero.webp",
+				Type:                  "image",
+				Bytes:                 180_000,
+				EstimatedSavingsBytes: 70_000,
+				PositionBand:          PositionBandAboveFold,
+				VisualRole:            VisualRoleHeroMedia,
+				ThirdPartyKind:        ThirdPartyKindUnknown,
+			},
+		},
+	}
+
+	result := service.BuildReportContext(report)
+	if result.SiteProfile.FrameworkHint != "astro" {
+		t.Fatalf("expected framework hint, got %#v", result.SiteProfile)
+	}
+	if len(result.TopResources) != 1 || result.TopResources[0].ID != "hero" {
+		t.Fatalf("expected vampire elements to bridge into top resources, got %#v", result.TopResources)
+	}
+	if len(result.Analysis.Findings) != 1 || result.Analysis.Findings[0].ID != "render_lcp_candidate" {
+		t.Fatalf("expected analysis findings in context, got %#v", result.Analysis.Findings)
+	}
+}
+
+func TestGenerateInsightsUsesAIProviderOnly(t *testing.T) {
+	service := &Service{
+		ai: stubInsightsProvider{
+			name: "gemini",
+			result: insights.ProviderResult{
+				Insights: insights.ScanInsights{
+					Provider:         "gemini",
+					ExecutiveSummary: "Resumen Gemini",
+				},
+			},
+		},
+	}
+
+	result, err := service.GenerateInsights(context.Background(), Report{
+		URL: "https://example.com",
+	})
+	if err != nil {
+		t.Fatalf("expected ai insights, got error: %v", err)
+	}
+	if result.Insights.Provider != "gemini" {
+		t.Fatalf("expected gemini provider, got %#v", result.Insights)
+	}
+}
+
+func TestGenerateInsightsRejectsEmptyPayload(t *testing.T) {
+	service := &Service{
+		ai: stubInsightsProvider{
+			name:   "gemini",
+			result: insights.ProviderResult{},
+		},
+	}
+
+	_, err := service.GenerateInsights(context.Background(), Report{
+		URL: "https://example.com",
+	})
+	if !errors.Is(err, errEmptyAIInsights) {
+		t.Fatalf("expected empty insights error, got %v", err)
+	}
+}
+
+func TestApplyInsightsOverlaysOnlyInsightsFields(t *testing.T) {
+	service := &Service{}
+	report := Report{
+		URL: "https://example.com",
+		Insights: insights.ScanInsights{
+			Provider:         "rule_based",
+			ExecutiveSummary: "Resumen base",
+			TopActions: []insights.TopAction{
+				{
+					ID:               "act-1",
+					RelatedFindingID: "third_party_analytics_overhead",
+				},
+			},
+		},
+		VampireElements: []ResourceSummary{
+			{
+				ID:                    "analytics",
+				URL:                   "https://us.i.posthog.com/static/array.js",
+				Type:                  "script",
+				Bytes:                 95_000,
+				EstimatedSavingsBytes: 40_000,
+				IsThirdPartyTool:      true,
+				ThirdPartyKind:        thirdPartyAnalytics,
+			},
+		},
+		Analysis: Analysis{
+			Findings: []AnalysisFinding{
+				{
+					ID:                    "third_party_analytics_overhead",
+					Category:              "third_party",
+					Severity:              "medium",
+					Confidence:            "high",
+					Title:                 "Analítica temprana",
+					Summary:               "Compite con el arranque.",
+					EstimatedSavingsBytes: 40_000,
+					RelatedResourceIDs:    []string{"analytics"},
+				},
+			},
+		},
+		Meta: Meta{
+			ScannerVersion: "2026.03",
+		},
+	}
+
+	service.ApplyInsights(&report, insights.ProviderResult{
+		Insights: insights.ScanInsights{
+			Provider:         "gemini",
+			ExecutiveSummary: "Resumen Gemini",
+			TopActions: []insights.TopAction{
+				{
+					ID:               "act-1",
+					RelatedFindingID: "third_party_analytics_overhead",
+					RelatedResourceIDs: []string{
+						"analytics",
+					},
+				},
+			},
+		},
+		AssetInsights: []insights.AssetInsightDraft{
+			{
+				ResourceID:        "analytics",
+				Title:             "Analítica con ruido evitable",
+				ShortProblem:      "Carga bytes antes de aportar valor.",
+				WhyItMatters:      "Empuja la red inicial.",
+				RecommendedAction: "Retrásala hasta interacción.",
+				Confidence:        "high",
+				LikelyLCPImpact:   "low",
+				Scope:             "asset",
+				Source:            "gemini",
+			},
+		},
+	})
+
+	if report.Insights.Provider != "gemini" {
+		t.Fatalf("expected gemini summary after apply, got %#v", report.Insights)
+	}
+	if report.Meta.ScannerVersion != "2026.03" {
+		t.Fatalf("expected metadata to remain untouched, got %#v", report.Meta)
+	}
+	if report.VampireElements[0].AssetInsight.Source != "hybrid" {
+		t.Fatalf("expected asset insights to be enriched, got %#v", report.VampireElements[0].AssetInsight)
 	}
 }

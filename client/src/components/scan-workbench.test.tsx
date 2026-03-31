@@ -188,6 +188,7 @@ describe("ScanWorkbench", () => {
       submittedURL: "https://example.com",
       reportJobId: "wl_report",
       conflictingJob: null,
+      insightsStatus: "none",
       resumeConflictingJob: vi.fn(),
     });
   });

@@ -104,7 +104,22 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 		Warnings:              warnings,
 	}
 
-	reportContext := insights.ReportContext{
+	report.VampireElements = vampires
+
+	providerResult, err := s.ruleBased.SummarizeReport(ctx, s.BuildReportContext(report))
+	if err != nil {
+		s.logger.Warn("report_rule_based_insights_failed", "url", target.NormalizedURL, "error", err)
+		providerResult = insights.ProviderResult{}
+	}
+	s.ApplyInsights(&report, providerResult)
+
+	report.Meta = buildMeta(startedAt, time.Now())
+
+	return report, nil
+}
+
+func (s *Service) BuildReportContext(report Report) insights.ReportContext {
+	return insights.ReportContext{
 		URL:                   report.URL,
 		Score:                 report.Score,
 		TotalBytesTransferred: report.TotalBytesTransferred,
@@ -140,32 +155,8 @@ func (s *Service) ScanPrepared(ctx context.Context, target PreparedTarget) (Repo
 			VisualMappedVampires:  report.Summary.VisualMappedVampires,
 		},
 		Analysis:     makeInsightAnalysis(report.Analysis),
-		TopResources: makeInsightResources(vampires),
+		TopResources: makeInsightResources(report.VampireElements),
 	}
-
-	providerResult, err := s.insights.SummarizeReport(ctx, reportContext)
-	if err != nil {
-		s.logger.Warn("report_insights_failed", "url", target.NormalizedURL, "error", err)
-		report.Warnings = append(report.Warnings, "La capa de IA no pudo enriquecer el informe; se usaron recomendaciones de respaldo.")
-		fallbackResult, fallbackErr := insights.NewRuleBasedProvider().SummarizeReport(ctx, reportContext)
-		if fallbackErr != nil {
-			s.logger.Warn("report_insights_fallback_failed", "url", target.NormalizedURL, "error", fallbackErr)
-		} else {
-			providerResult = fallbackResult
-		}
-	}
-	providerResult.Insights = sanitizeInsightReport(providerResult.Insights, report.Analysis.Findings, vampires)
-	report.Insights = providerResult.Insights
-	report.VampireElements = attachAssetInsights(
-		vampires,
-		report.Analysis,
-		report.Insights.TopActions,
-		providerResult.AssetInsights,
-	)
-
-	report.Meta = buildMeta(startedAt, time.Now())
-
-	return report, nil
 }
 
 type enrichedResource struct {

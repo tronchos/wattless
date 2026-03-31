@@ -231,6 +231,8 @@ export type ScanJobStatus =
   | "failed"
   | "expired";
 
+export type InsightsStatus = "none" | "processing" | "ready" | "failed";
+
 export interface ScanJobResponse {
   job_id: string;
   url: string;
@@ -244,4 +246,12 @@ export interface ScanJobResponse {
 
 export interface APIErrorPayload {
   error: string;
+  code?: string;
+}
+
+export interface ScanInsightsResponse {
+  job_id: string;
+  status: Exclude<InsightsStatus, "none">;
+  insights?: ScanInsights;
+  vampire_elements?: VampireElement[];
 }

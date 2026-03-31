@@ -22,6 +22,7 @@ import (
 type JobQueue interface {
 	Submit(context.Context, string, string) (queue.SubmitResult, error)
 	Get(context.Context, string) (queue.JobResponse, error)
+	GetInsights(context.Context, string) (queue.InsightsResponse, error)
 }
 
 type handler struct {
@@ -43,6 +44,7 @@ func NewRouter(cfg config.Config, jobQueue JobQueue, logger *slog.Logger) http.H
 	mux.HandleFunc("GET /healthz", h.handleHealth)
 	mux.HandleFunc("POST /api/v1/scans", h.handleSubmitScan)
 	mux.HandleFunc("GET /api/v1/scans/{jobID}", h.handleGetScan)
+	mux.HandleFunc("GET /api/v1/scans/{jobID}/insights", h.handleGetInsights)
 	mux.HandleFunc("GET /api/v1/scans/{jobID}/screenshot", h.handleGetScreenshot)
 	mux.HandleFunc("GET /", h.handleSPA)
 
@@ -55,7 +57,13 @@ type scanRequest struct {
 
 type errorResponse struct {
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
 }
+
+const (
+	errorCodeJobNotFound         = "job_not_found"
+	errorCodeInsightsUnavailable = "insights_unavailable"
+)
 
 type submitScanResponse struct {
 	JobID                string          `json:"job_id"`
@@ -139,7 +147,7 @@ func (h handler) handleSubmitScan(w http.ResponseWriter, r *http.Request) {
 func (h handler) handleGetScan(w http.ResponseWriter, r *http.Request) {
 	jobID := strings.TrimSpace(r.PathValue("jobID"))
 	if jobID == "" {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "No encontramos ese turno."}, h.logger)
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "No encontramos ese turno.", Code: errorCodeJobNotFound}, h.logger)
 		return
 	}
 
@@ -168,6 +176,54 @@ func (h handler) handleGetScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, job, h.logger)
+}
+
+func (h handler) handleGetInsights(w http.ResponseWriter, r *http.Request) {
+	jobID := strings.TrimSpace(r.PathValue("jobID"))
+	if jobID == "" {
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "No encontramos ese turno."}, h.logger)
+		return
+	}
+
+	result, err := h.queue.GetInsights(r.Context(), jobID)
+	if err != nil {
+		switch {
+		case errors.Is(err, queue.ErrJobExpired):
+			var expiredErr *queue.ExpiredError
+			if errors.As(err, &expiredErr) {
+				writeJSON(w, http.StatusGone, expiredErr.Job, h.logger)
+				return
+			}
+			writeJSON(w, http.StatusGone, queue.JobResponse{
+				JobID:    jobID,
+				Status:   queue.StatusExpired,
+				Position: 0,
+				Error:    "Tu turno expiró. Envía un nuevo análisis.",
+			}, h.logger)
+		case errors.Is(err, queue.ErrInsightsUnavailable):
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Error: "Insights no disponibles para este turno.",
+				Code:  errorCodeInsightsUnavailable,
+			}, h.logger)
+		case errors.Is(err, queue.ErrJobNotFound):
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Error: "No encontramos ese turno.",
+				Code:  errorCodeJobNotFound,
+			}, h.logger)
+		default:
+			h.logger.Warn("scan_insights_status_failed", "job_id", jobID, "error", err)
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "Error interno del servidor"}, h.logger)
+		}
+		return
+	}
+
+	if result.Status == queue.InsightsStatusProcessing {
+		writeRetryAfter(w, 2*time.Second)
+		writeJSON(w, http.StatusAccepted, result, h.logger)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result, h.logger)
 }
 
 func (h handler) handleGetScreenshot(w http.ResponseWriter, r *http.Request) {

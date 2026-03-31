@@ -153,6 +153,7 @@ describe("InsightsPanel", () => {
     render(
       <InsightsPanel
         report={makeReport()}
+        insightsStatus="none"
         selectedElementID={null}
         onSelectElement={onSelectElement}
       />,
@@ -167,6 +168,7 @@ describe("InsightsPanel", () => {
     render(
       <InsightsPanel
         report={makeReport()}
+        insightsStatus="none"
         selectedElementID={null}
         onSelectElement={() => {}}
       />,
@@ -178,5 +180,18 @@ describe("InsightsPanel", () => {
     expect(anchored.getAttribute("class")).toContain("bg-primary/10");
     expect(anchored.getAttribute("class")).toContain("border-primary/20");
     expect(unanchored.getAttribute("class")).not.toContain("bg-primary/10");
+  });
+
+  it("shows AI progress badge while async insights are processing", () => {
+    render(
+      <InsightsPanel
+        report={makeReport()}
+        insightsStatus="processing"
+        selectedElementID={null}
+        onSelectElement={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/Generando insights con IA/i)).toBeTruthy();
   });
 });

@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/tronchos/wattless/server/internal/config"
@@ -10,13 +11,16 @@ import (
 	"github.com/tronchos/wattless/server/pkg/urlutil"
 )
 
+var errEmptyAIInsights = errors.New("ai provider returned no usable insights")
+
 type HostingChecker interface {
 	Check(context.Context, string) (hosting.Result, error)
 }
 type Service struct {
 	cfg            config.Config
 	hostingChecker HostingChecker
-	insights       insights.Provider
+	ruleBased      insights.Provider
+	ai             insights.Provider
 	logger         *slog.Logger
 }
 type PreparedTarget struct {
@@ -26,11 +30,21 @@ type PreparedTarget struct {
 	ResolvedIP    string
 }
 
-func NewService(cfg config.Config, hostingChecker HostingChecker, insightsProvider insights.Provider, logger *slog.Logger) *Service {
+func NewService(
+	cfg config.Config,
+	hostingChecker HostingChecker,
+	ruleBasedProvider insights.Provider,
+	aiProvider insights.Provider,
+	logger *slog.Logger,
+) *Service {
+	if ruleBasedProvider == nil {
+		ruleBasedProvider = insights.NewRuleBasedProvider()
+	}
 	return &Service{
 		cfg:            cfg,
 		hostingChecker: hostingChecker,
-		insights:       insightsProvider,
+		ruleBased:      ruleBasedProvider,
+		ai:             aiProvider,
 		logger:         logger,
 	}
 }
@@ -64,4 +78,46 @@ func (s *Service) PrepareTarget(ctx context.Context, rawURL string) (PreparedTar
 		Hostname:      hostname,
 		ResolvedIP:    resolvedIP,
 	}, nil
+}
+
+func (s *Service) HasAIProvider() bool {
+	return s.ai != nil
+}
+
+func (s *Service) GenerateInsights(ctx context.Context, report Report) (insights.ProviderResult, error) {
+	if s.ai == nil {
+		return insights.ProviderResult{}, nil
+	}
+
+	result, err := s.ai.SummarizeReport(ctx, s.BuildReportContext(report))
+	if err != nil {
+		return insights.ProviderResult{}, err
+	}
+	if !hasMaterialInsights(result) {
+		return insights.ProviderResult{}, errEmptyAIInsights
+	}
+
+	return result, nil
+}
+
+func (s *Service) ApplyInsights(report *Report, result insights.ProviderResult) {
+	if report == nil {
+		return
+	}
+
+	result.Insights = sanitizeInsightReport(result.Insights, report.Analysis.Findings, report.VampireElements)
+	report.Insights = result.Insights
+	report.VampireElements = attachAssetInsights(
+		report.VampireElements,
+		report.Analysis,
+		report.Insights.TopActions,
+		result.AssetInsights,
+	)
+}
+
+func hasMaterialInsights(result insights.ProviderResult) bool {
+	return result.Insights.ExecutiveSummary != "" ||
+		result.Insights.PitchLine != "" ||
+		len(result.Insights.TopActions) > 0 ||
+		len(result.AssetInsights) > 0
 }

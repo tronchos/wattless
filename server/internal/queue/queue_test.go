@@ -10,24 +10,34 @@ import (
 	"time"
 
 	"github.com/tronchos/wattless/server/internal/config"
+	"github.com/tronchos/wattless/server/internal/insights"
 	"github.com/tronchos/wattless/server/internal/scanner"
 	"log/slog"
 )
 
 type fakeScanService struct {
-	mu      sync.Mutex
-	release map[string]chan struct{}
-	started chan string
-	scanErr map[string]error
-	reports map[string]scanner.Report
+	mu              sync.Mutex
+	release         map[string]chan struct{}
+	insightsRelease map[string]chan struct{}
+	started         chan string
+	insightsStarted chan string
+	scanErr         map[string]error
+	insightsErr     map[string]error
+	reports         map[string]scanner.Report
+	insightsResults map[string]insights.ProviderResult
+	hasAI           bool
 }
 
 func newFakeScanService() *fakeScanService {
 	return &fakeScanService{
-		release: make(map[string]chan struct{}),
-		started: make(chan string, 16),
-		scanErr: make(map[string]error),
-		reports: make(map[string]scanner.Report),
+		release:         make(map[string]chan struct{}),
+		insightsRelease: make(map[string]chan struct{}),
+		started:         make(chan string, 16),
+		insightsStarted: make(chan string, 16),
+		scanErr:         make(map[string]error),
+		insightsErr:     make(map[string]error),
+		reports:         make(map[string]scanner.Report),
+		insightsResults: make(map[string]insights.ProviderResult),
 	}
 }
 
@@ -47,7 +57,14 @@ func (s *fakeScanService) ScanPrepared(ctx context.Context, target scanner.Prepa
 	release := s.release[target.NormalizedURL]
 	report, ok := s.reports[target.NormalizedURL]
 	if !ok {
-		report = scanner.Report{URL: target.NormalizedURL, Score: "A"}
+		report = scanner.Report{
+			URL:   target.NormalizedURL,
+			Score: "A",
+			Insights: insights.ScanInsights{
+				Provider:         "rule_based",
+				ExecutiveSummary: "Resumen base",
+			},
+		}
 	}
 	err := s.scanErr[target.NormalizedURL]
 	s.mu.Unlock()
@@ -65,6 +82,50 @@ func (s *fakeScanService) ScanPrepared(ctx context.Context, target scanner.Prepa
 	}
 
 	return report, nil
+}
+
+func (s *fakeScanService) GenerateInsights(ctx context.Context, report scanner.Report) (insights.ProviderResult, error) {
+	s.insightsStarted <- report.URL
+
+	s.mu.Lock()
+	release := s.insightsRelease[report.URL]
+	result, ok := s.insightsResults[report.URL]
+	if !ok {
+		result = insights.ProviderResult{
+			Insights: insights.ScanInsights{
+				Provider:         "gemini",
+				ExecutiveSummary: "Resumen Gemini",
+			},
+		}
+	}
+	err := s.insightsErr[report.URL]
+	s.mu.Unlock()
+
+	if release != nil {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return insights.ProviderResult{}, ctx.Err()
+		}
+	}
+
+	if err != nil {
+		return insights.ProviderResult{}, err
+	}
+
+	return result, nil
+}
+
+func (s *fakeScanService) ApplyInsights(report *scanner.Report, result insights.ProviderResult) {
+	if report == nil {
+		return
+	}
+
+	report.Insights = result.Insights
+}
+
+func (s *fakeScanService) HasAIProvider() bool {
+	return s.hasAI
 }
 
 func TestQueueDispatchesFIFOAndUpdatesPosition(t *testing.T) {
@@ -292,6 +353,239 @@ func TestQueueExpiresQueuedJobsAfterTTL(t *testing.T) {
 	waitForStatus(t, q, first.Job.JobID, StatusCompleted)
 }
 
+func TestQueueMarksInsightsProcessingWithoutBlockingCompletedReport(t *testing.T) {
+	service := newFakeScanService()
+	service.hasAI = true
+	service.insightsRelease["https://ai.test"] = make(chan struct{})
+	service.insightsResults["https://ai.test"] = insights.ProviderResult{
+		Insights: insights.ScanInsights{
+			Provider:         "gemini",
+			ExecutiveSummary: "Resumen enriquecido",
+		},
+	}
+
+	q := New(config.Config{
+		RequestTimeout:      5 * time.Second,
+		LLMTimeout:          5 * time.Second,
+		MaxQueueSize:        5,
+		DailyIPScanLimit:    10,
+		JobTTL:              5 * time.Minute,
+		ResultTTL:           3 * time.Minute,
+		ConcurrentScanLimit: 1,
+	}, service, scanner.NewBrowserPool(1), nilLogger())
+
+	submitted, err := q.Submit(context.Background(), "https://ai.test", "203.0.113.10")
+	if err != nil {
+		t.Fatalf("expected submit to succeed: %v", err)
+	}
+	waitForStarted(t, service.started, "https://ai.test")
+	waitForStatus(t, q, submitted.Job.JobID, StatusCompleted)
+	waitForInsightsStatus(t, q, submitted.Job.JobID, InsightsStatusProcessing)
+
+	job, err := q.Get(context.Background(), submitted.Job.JobID)
+	if err != nil {
+		t.Fatalf("expected completed job, got %v", err)
+	}
+	if job.Report == nil || job.Report.Insights.Provider != "rule_based" {
+		t.Fatalf("expected base report before async insights, got %#v", job.Report)
+	}
+
+	insightsResponse, err := q.GetInsights(context.Background(), submitted.Job.JobID)
+	if err != nil {
+		t.Fatalf("expected insights status, got %v", err)
+	}
+	if insightsResponse.Status != InsightsStatusProcessing {
+		t.Fatalf("expected processing insights, got %#v", insightsResponse)
+	}
+
+	close(service.insightsRelease["https://ai.test"])
+	waitForInsightsStatus(t, q, submitted.Job.JobID, InsightsStatusReady)
+
+	ready, err := q.GetInsights(context.Background(), submitted.Job.JobID)
+	if err != nil {
+		t.Fatalf("expected ready insights, got %v", err)
+	}
+	if ready.Status != InsightsStatusReady {
+		t.Fatalf("expected ready insights status, got %#v", ready)
+	}
+	if ready.Insights == nil || ready.Insights.Provider != "gemini" {
+		t.Fatalf("expected gemini insights payload, got %#v", ready.Insights)
+	}
+}
+
+func TestQueueMarksInsightsFailedWhenAsyncProviderFails(t *testing.T) {
+	service := newFakeScanService()
+	service.hasAI = true
+	service.insightsErr["https://boom.test"] = errors.New("boom")
+
+	q := New(config.Config{
+		RequestTimeout:      5 * time.Second,
+		LLMTimeout:          5 * time.Second,
+		MaxQueueSize:        5,
+		DailyIPScanLimit:    10,
+		JobTTL:              5 * time.Minute,
+		ResultTTL:           3 * time.Minute,
+		ConcurrentScanLimit: 1,
+	}, service, scanner.NewBrowserPool(1), nilLogger())
+
+	submitted, err := q.Submit(context.Background(), "https://boom.test", "203.0.113.20")
+	if err != nil {
+		t.Fatalf("expected submit to succeed: %v", err)
+	}
+	waitForStarted(t, service.started, "https://boom.test")
+	waitForStatus(t, q, submitted.Job.JobID, StatusCompleted)
+	waitForInsightsStatus(t, q, submitted.Job.JobID, InsightsStatusFailed)
+
+	insightsResponse, err := q.GetInsights(context.Background(), submitted.Job.JobID)
+	if err != nil {
+		t.Fatalf("expected failed insights status, got %v", err)
+	}
+	if insightsResponse.Status != InsightsStatusFailed {
+		t.Fatalf("expected failed insights status, got %#v", insightsResponse)
+	}
+}
+
+func TestQueueInsightsUnavailableWithoutAIProvider(t *testing.T) {
+	service := newFakeScanService()
+
+	q := New(config.Config{
+		RequestTimeout:      5 * time.Second,
+		LLMTimeout:          5 * time.Second,
+		MaxQueueSize:        5,
+		DailyIPScanLimit:    10,
+		JobTTL:              5 * time.Minute,
+		ResultTTL:           3 * time.Minute,
+		ConcurrentScanLimit: 1,
+	}, service, scanner.NewBrowserPool(1), nilLogger())
+
+	submitted, err := q.Submit(context.Background(), "https://rule-based.test", "203.0.113.30")
+	if err != nil {
+		t.Fatalf("expected submit to succeed: %v", err)
+	}
+	waitForStarted(t, service.started, "https://rule-based.test")
+	waitForStatus(t, q, submitted.Job.JobID, StatusCompleted)
+
+	_, err = q.GetInsights(context.Background(), submitted.Job.JobID)
+	if !errors.Is(err, ErrInsightsUnavailable) {
+		t.Fatalf("expected insights unavailable, got %v", err)
+	}
+}
+
+func TestQueueGetReturnsDeepClonedReportSnapshot(t *testing.T) {
+	service := newFakeScanService()
+	service.reports["https://clone.test"] = scanner.Report{
+		URL: "https://clone.test",
+		Insights: insights.ScanInsights{
+			Provider:         "rule_based",
+			ExecutiveSummary: "Resumen base",
+			TopActions: []insights.TopAction{
+				{
+					ID:                 "act-1",
+					Evidence:           []string{"evidence-1"},
+					RelatedResourceIDs: []string{"asset-1"},
+					VisibleRelatedResourceIDs: []string{
+						"asset-1",
+					},
+					RecommendedFix: &insights.RecommendedFix{
+						Summary: "Fix",
+						Changes: []string{"change-1"},
+					},
+				},
+			},
+		},
+		VampireElements: []scanner.ResourceSummary{
+			{
+				ID: "asset-1",
+				AssetInsight: scanner.AssetInsight{
+					Evidence: []string{"asset-evidence"},
+					RecommendedFix: &scanner.FixSuggestion{
+						Summary: "Fix",
+						Changes: []string{"change-1"},
+					},
+				},
+				BoundingBox: &scanner.BoundingBox{X: 1, Y: 2, Width: 3, Height: 4},
+			},
+		},
+		Analysis: scanner.Analysis{
+			Findings: []scanner.AnalysisFinding{
+				{
+					ID:                 "finding-1",
+					Evidence:           []string{"finding-evidence"},
+					RelatedResourceIDs: []string{"asset-1"},
+				},
+			},
+			ResourceGroups: []scanner.ResourceGroup{
+				{
+					ID:                 "group-1",
+					RelatedResourceIDs: []string{"asset-1"},
+				},
+			},
+		},
+		Methodology: scanner.Methodology{
+			Assumptions: []string{"assumption-1"},
+		},
+		Warnings: []string{"warning-1"},
+	}
+
+	q := New(config.Config{
+		RequestTimeout:      5 * time.Second,
+		LLMTimeout:          5 * time.Second,
+		MaxQueueSize:        5,
+		DailyIPScanLimit:    10,
+		JobTTL:              5 * time.Minute,
+		ResultTTL:           3 * time.Minute,
+		ConcurrentScanLimit: 1,
+	}, service, scanner.NewBrowserPool(1), nilLogger())
+
+	submitted, err := q.Submit(context.Background(), "https://clone.test", "203.0.113.40")
+	if err != nil {
+		t.Fatalf("expected submit to succeed: %v", err)
+	}
+	waitForStarted(t, service.started, "https://clone.test")
+	waitForStatus(t, q, submitted.Job.JobID, StatusCompleted)
+
+	first, err := q.Get(context.Background(), submitted.Job.JobID)
+	if err != nil {
+		t.Fatalf("expected cloned report snapshot, got %v", err)
+	}
+	if first.Report == nil {
+		t.Fatal("expected report snapshot")
+	}
+
+	first.Report.Insights.TopActions[0].Evidence[0] = "mutated"
+	first.Report.Insights.TopActions[0].RecommendedFix.Changes[0] = "mutated"
+	first.Report.VampireElements[0].AssetInsight.Evidence[0] = "mutated"
+	first.Report.VampireElements[0].AssetInsight.RecommendedFix.Changes[0] = "mutated"
+	first.Report.VampireElements[0].BoundingBox.X = 99
+	first.Report.Analysis.Findings[0].Evidence[0] = "mutated"
+	first.Report.Analysis.ResourceGroups[0].RelatedResourceIDs[0] = "mutated"
+	first.Report.Methodology.Assumptions[0] = "mutated"
+	first.Report.Warnings[0] = "mutated"
+
+	second, err := q.Get(context.Background(), submitted.Job.JobID)
+	if err != nil {
+		t.Fatalf("expected second report snapshot, got %v", err)
+	}
+	if second.Report == nil {
+		t.Fatal("expected report snapshot")
+	}
+	if second.Report.Insights.TopActions[0].Evidence[0] != "evidence-1" {
+		t.Fatalf("expected deep clone for top action evidence, got %#v", second.Report.Insights.TopActions[0].Evidence)
+	}
+	if second.Report.VampireElements[0].AssetInsight.Evidence[0] != "asset-evidence" {
+		t.Fatalf("expected deep clone for asset evidence, got %#v", second.Report.VampireElements[0].AssetInsight.Evidence)
+	}
+	if second.Report.VampireElements[0].BoundingBox.X != 1 {
+		t.Fatalf("expected deep clone for bounding box, got %#v", second.Report.VampireElements[0].BoundingBox)
+	}
+	if second.Report.Methodology.Assumptions[0] != "assumption-1" {
+		t.Fatalf("expected deep clone for methodology assumptions, got %#v", second.Report.Methodology.Assumptions)
+	}
+	if second.Report.Warnings[0] != "warning-1" {
+		t.Fatalf("expected deep clone for warnings, got %#v", second.Report.Warnings)
+	}
+}
+
 func nilLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
@@ -323,6 +617,41 @@ func waitForStatus(t *testing.T, q *Queue, jobID string, expected JobStatus) {
 
 	job, err := q.Get(context.Background(), jobID)
 	t.Fatalf("timed out waiting for job %s to reach %q, last state %#v, err=%v", jobID, expected, job, err)
+}
+
+func waitForInsightsStatus(t *testing.T, q *Queue, jobID string, expected InsightsStatus) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		q.mu.Lock()
+		job, ok := q.jobsByID[jobID]
+		current := InsightsStatusNone
+		if ok {
+			current = job.InsightsStatus
+		}
+		q.mu.Unlock()
+
+		if ok && current == expected {
+			return
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	q.mu.Lock()
+	job, ok := q.jobsByID[jobID]
+	q.mu.Unlock()
+	if !ok {
+		t.Fatalf("timed out waiting for insights status %q, job %s not found", expected, jobID)
+	}
+
+	t.Fatalf(
+		"timed out waiting for job %s to reach insights %q, last status %q",
+		jobID,
+		expected,
+		job.InsightsStatus,
+	)
 }
 
 func sequentialID() func() string {

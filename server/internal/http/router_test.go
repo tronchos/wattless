@@ -16,16 +16,19 @@ import (
 	"time"
 
 	"github.com/tronchos/wattless/server/internal/config"
+	"github.com/tronchos/wattless/server/internal/insights"
 	"github.com/tronchos/wattless/server/internal/queue"
 	"github.com/tronchos/wattless/server/internal/scanner"
 	"github.com/tronchos/wattless/server/pkg/urlutil"
 )
 
 type stubQueue struct {
-	submitResult queue.SubmitResult
-	submitErr    error
-	getResult    queue.JobResponse
-	getErr       error
+	submitResult      queue.SubmitResult
+	submitErr         error
+	getResult         queue.JobResponse
+	getErr            error
+	getInsightsResult queue.InsightsResponse
+	getInsightsErr    error
 }
 
 func (s stubQueue) Submit(ctx context.Context, rawURL, clientIP string) (queue.SubmitResult, error) {
@@ -34,6 +37,10 @@ func (s stubQueue) Submit(ctx context.Context, rawURL, clientIP string) (queue.S
 
 func (s stubQueue) Get(ctx context.Context, jobID string) (queue.JobResponse, error) {
 	return s.getResult, s.getErr
+}
+
+func (s stubQueue) GetInsights(ctx context.Context, jobID string) (queue.InsightsResponse, error) {
+	return s.getInsightsResult, s.getInsightsErr
 }
 
 func testRouterConfig() config.Config {
@@ -166,6 +173,126 @@ func TestGetScanReturnsNotFound(t *testing.T) {
 
 	if recorder.Code != nethttp.StatusNotFound {
 		t.Fatalf("expected status 404, got %d", recorder.Code)
+	}
+}
+
+func TestGetInsightsReturnsAcceptedWhileProcessing(t *testing.T) {
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000"}, stubQueue{
+		getInsightsResult: queue.InsightsResponse{
+			JobID:  "wl_processing",
+			Status: queue.InsightsStatusProcessing,
+		},
+	}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/v1/scans/wl_processing/insights", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusAccepted {
+		t.Fatalf("expected status 202, got %d", recorder.Code)
+	}
+	if got := recorder.Header().Get("Retry-After"); got != "2" {
+		t.Fatalf("expected Retry-After 2, got %q", got)
+	}
+}
+
+func TestGetInsightsReturnsReadyPayload(t *testing.T) {
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000"}, stubQueue{
+		getInsightsResult: queue.InsightsResponse{
+			JobID:  "wl_ready",
+			Status: queue.InsightsStatusReady,
+			Insights: &insights.ScanInsights{
+				Provider:         "gemini",
+				ExecutiveSummary: "Resumen Gemini",
+			},
+			VampireElements: []scanner.ResourceSummary{
+				{ID: "asset-1", URL: "https://example.com/hero.webp"},
+			},
+		},
+	}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/v1/scans/wl_ready/insights", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+
+	var payload queue.InsightsResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("expected valid insights JSON: %v", err)
+	}
+	if payload.Status != queue.InsightsStatusReady {
+		t.Fatalf("expected ready status, got %#v", payload)
+	}
+	if payload.Insights == nil || payload.Insights.Provider != "gemini" {
+		t.Fatalf("expected gemini insights, got %#v", payload.Insights)
+	}
+}
+
+func TestGetInsightsReturnsNotFoundForUnavailableInsights(t *testing.T) {
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000"}, stubQueue{
+		getInsightsErr: queue.ErrInsightsUnavailable,
+	}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/v1/scans/wl_missing/insights", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", recorder.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("expected valid JSON response: %v", err)
+	}
+	if payload["code"] != "insights_unavailable" {
+		t.Fatalf("expected insights_unavailable code, got %#v", payload)
+	}
+}
+
+func TestGetInsightsReturnsNotFoundForMissingJob(t *testing.T) {
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000"}, stubQueue{
+		getInsightsErr: queue.ErrJobNotFound,
+	}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/v1/scans/wl_missing/insights", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", recorder.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("expected valid JSON response: %v", err)
+	}
+	if payload["code"] != "job_not_found" {
+		t.Fatalf("expected job_not_found code, got %#v", payload)
+	}
+}
+
+func TestGetInsightsReturnsGoneForExpiredJob(t *testing.T) {
+	expiredJob := queue.JobResponse{
+		JobID:    "wl_expired",
+		URL:      "https://example.com",
+		Status:   queue.StatusExpired,
+		Position: 0,
+		Error:    "Tu turno expiró por inactividad. Envía un nuevo análisis.",
+	}
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000"}, stubQueue{
+		getInsightsErr: &queue.ExpiredError{Job: expiredJob},
+	}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/v1/scans/wl_expired/insights", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusGone {
+		t.Fatalf("expected status 410, got %d", recorder.Code)
 	}
 }
 
@@ -463,7 +590,7 @@ func TestCORSPreflightReturnsAllowedHeadersForConfiguredOrigin(t *testing.T) {
 
 func TestSPAHandlerServesEmbeddedAssetWhenPresent(t *testing.T) {
 	withStaticFSTestFixture(t, fstest.MapFS{
-		"index.html": &fstest.MapFile{Data: []byte("<html>index</html>")},
+		"index.html":    &fstest.MapFile{Data: []byte("<html>index</html>")},
 		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('vite');")},
 	})
 

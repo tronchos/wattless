@@ -1,15 +1,17 @@
 import { Sparkles } from "lucide-react";
 
-import type { ScanReport } from "@/lib/types";
+import type { InsightsStatus, ScanReport } from "@/lib/types";
 
 interface InsightsPanelProps {
   report: ScanReport;
+  insightsStatus: InsightsStatus;
   selectedElementID: string | null;
   onSelectElement: (id: string) => void;
 }
 
 export function InsightsPanel({
   report,
+  insightsStatus,
   selectedElementID,
   onSelectElement,
 }: InsightsPanelProps) {
@@ -52,6 +54,7 @@ export function InsightsPanel({
       : null;
 
   const resolvedActiveAction = activeAction ?? fallbackActiveAction;
+  const isProcessing = insightsStatus === "processing";
 
   return (
     <section id="insights" className="bg-surface-container/40 backdrop-blur-xl border border-primary/20 rounded-3xl p-6 lg:p-8 relative overflow-hidden shadow-xl">
@@ -64,6 +67,11 @@ export function InsightsPanel({
               <Sparkles className="h-3 w-3" />
               {report.insights.provider}
             </span>
+            {isProcessing ? (
+              <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-400/10 text-amber-200 border border-amber-300/20 animate-pulse">
+                Generando insights con IA...
+              </span>
+            ) : null}
           </div>
           <p className="mt-4 text-xl lg:text-2xl leading-relaxed text-on-surface font-headline font-semibold">
             {report.insights.executive_summary}
@@ -119,6 +127,11 @@ export function InsightsPanel({
                       <p className="mt-2 text-xs leading-5 text-slate-400">
                         {action.evidence[0]}
                       </p>
+                    ) : null}
+                    {isProcessing ? (
+                      <div className="mt-3 h-1.5 w-24 rounded-full bg-primary/20 overflow-hidden">
+                        <div className="h-full w-1/2 rounded-full bg-primary/60 animate-pulse"></div>
+                      </div>
                     ) : null}
                   </button>
                 );

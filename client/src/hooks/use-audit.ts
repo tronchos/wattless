@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { APIError, pollScanJob, submitScan } from "@/lib/api";
+import { APIError, fetchInsights, pollScanJob, submitScan } from "@/lib/api";
 import type {
+  InsightsStatus,
+  ScanInsights,
   ScanJobResponse,
   ScanJobStatus,
   ScanReport,
@@ -16,7 +18,9 @@ export const scanProgressLabels = [
 ];
 
 const activeJobStorageKey = "wattless.active_scan_job";
+const lastCompletedJobStorageKey = "wattless.last_completed_scan_job";
 const pollIntervalMs = 1500;
+const insightsPollIntervalMs = 2000;
 
 function isAnchoredAction(action: ScanReport["insights"]["top_actions"][number]): boolean {
   return action.visible_related_resource_ids.length > 0;
@@ -94,10 +98,57 @@ function loadStoredJob(): ScanJobResponse | null {
   }
 }
 
+function loadLastCompletedJobID(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const jobID = window.sessionStorage.getItem(lastCompletedJobStorageKey);
+  return jobID?.trim() || null;
+}
+
+function clearStoredCompletedJob(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.removeItem(lastCompletedJobStorageKey);
+}
+
+function isAIEnrichedReport(report: ScanReport): boolean {
+  if (report.insights.provider !== "rule_based") {
+    return true;
+  }
+
+  return report.vampire_elements.some(
+    (element) => element.asset_insight.source !== "rule_based",
+  );
+}
+
+function mergeAIReport(
+  baseReport: ScanReport | null,
+  aiInsights: ScanInsights | null,
+  aiVampires: VampireElement[] | null,
+): ScanReport | null {
+  if (!baseReport) {
+    return null;
+  }
+
+  if (!aiInsights && !aiVampires) {
+    return baseReport;
+  }
+
+  return {
+    ...baseReport,
+    insights: aiInsights ?? baseReport.insights,
+    vampire_elements: aiVampires ?? baseReport.vampire_elements,
+  };
+}
+
 export function useAudit() {
   const [restoredJob] = useState<ScanJobResponse | null>(() => loadStoredJob());
   const [inputURL, setInputURL] = useState("");
-  const [report, setReport] = useState<ScanReport | null>(null);
+  const [baseReport, setBaseReport] = useState<ScanReport | null>(null);
   const [previousReport, setPreviousReport] = useState<ScanReport | null>(null);
   const [selectedElementID, setSelectedElementID] = useState<string | null>(null);
   const [selectionSignal, setSelectionSignal] = useState(0);
@@ -121,7 +172,18 @@ export function useAudit() {
   );
   const [reportJobId, setReportJobId] = useState<string | null>(null);
   const [conflictingJob, setConflictingJob] = useState<ScanJobResponse | null>(null);
+  const [insightsStatus, setInsightsStatus] = useState<InsightsStatus>("none");
+  const [aiInsights, setAIInsights] = useState<ScanInsights | null>(null);
+  const [aiVampires, setAIVampires] = useState<VampireElement[] | null>(null);
+  const [lastCompletedJobId, setLastCompletedJobId] = useState<string | null>(
+    () => loadLastCompletedJobID(),
+  );
   const pendingPreviousReportRef = useRef<ScanReport | null>(null);
+
+  const report = useMemo(
+    () => mergeAIReport(baseReport, aiInsights, aiVampires),
+    [aiInsights, aiVampires, baseReport],
+  );
 
   const selectedElement =
     report?.vampire_elements.find((element) => element.id === selectedElementID) ??
@@ -148,6 +210,19 @@ export function useAudit() {
   }, [estimatedWaitSeconds, jobId, jobStatus, queuePosition, submittedURL]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!lastCompletedJobId) {
+      window.sessionStorage.removeItem(lastCompletedJobStorageKey);
+      return;
+    }
+
+    window.sessionStorage.setItem(lastCompletedJobStorageKey, lastCompletedJobId);
+  }, [lastCompletedJobId]);
+
+  useEffect(() => {
     if (jobStatus !== "scanning") {
       return;
     }
@@ -162,6 +237,12 @@ export function useAudit() {
   const selectElement = useCallback((id: string | null) => {
     setSelectionSignal((current) => current + 1);
     setSelectedElementID(id);
+  }, []);
+
+  const resetAIState = useCallback((status: InsightsStatus = "none") => {
+    setAIInsights(null);
+    setAIVampires(null);
+    setInsightsStatus(status);
   }, []);
 
   const clearActiveJob = useCallback(() => {
@@ -191,8 +272,10 @@ export function useAudit() {
     (nextReport: ScanReport, completedJobId: string) => {
       const previous = pendingPreviousReportRef.current;
       setPreviousReport(previous?.url === nextReport.url ? previous : null);
-      setReport(nextReport);
+      setBaseReport(nextReport);
       setReportJobId(completedJobId);
+      setLastCompletedJobId(completedJobId);
+      resetAIState(isAIEnrichedReport(nextReport) ? "ready" : "none");
       setSelectionSignal((current) => current + 1);
       setSelectedElementID(resolvePreferredElement(nextReport)?.id ?? null);
       setScanError(null);
@@ -201,7 +284,7 @@ export function useAudit() {
       clearActiveJob();
       pendingPreviousReportRef.current = null;
     },
-    [clearActiveJob],
+    [clearActiveJob, resetAIState],
   );
 
   const resumeConflictingJob = useCallback(() => {
@@ -211,13 +294,14 @@ export function useAudit() {
 
     pendingPreviousReportRef.current = report;
     setPreviousReport(null);
-    setReport(null);
+    setBaseReport(null);
     setReportJobId(null);
+    resetAIState();
     setConflictingJob(null);
     setScanError(null);
     setScanProgressIndex(0);
     adoptJob(conflictingJob);
-  }, [adoptJob, conflictingJob, report]);
+  }, [adoptJob, conflictingJob, report, resetAIState]);
 
   const handleSubmit = useCallback(
     async (event?: React.FormEvent<HTMLFormElement>) => {
@@ -250,8 +334,9 @@ export function useAudit() {
         const job = await submitScan(nextURL);
         pendingPreviousReportRef.current = currentReport;
         setPreviousReport(null);
-        setReport(null);
+        setBaseReport(null);
         setReportJobId(null);
+        resetAIState();
 
         if (job.status === "completed" && job.report) {
           applyCompletedReport(job.report, job.job_id);
@@ -277,7 +362,7 @@ export function useAudit() {
         setIsScanning(false);
       }
     },
-    [adoptJob, applyCompletedReport, clearActiveJob, inputURL, report],
+    [adoptJob, applyCompletedReport, clearActiveJob, inputURL, report, resetAIState],
   );
 
   useEffect(() => {
@@ -361,6 +446,142 @@ export function useAudit() {
     };
   }, [adoptJob, applyCompletedReport, clearActiveJob, jobId, jobStatus]);
 
+  useEffect(() => {
+    if (jobId || baseReport || !lastCompletedJobId) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const rehydrateCompletedReport = async () => {
+      try {
+        const result = await pollScanJob(lastCompletedJobId);
+        if (isCancelled) {
+          return;
+        }
+
+        if (result.status === "completed" && result.report) {
+          setBaseReport(result.report);
+          setReportJobId(result.job_id);
+          setInsightsStatus(isAIEnrichedReport(result.report) ? "ready" : "none");
+          setSelectionSignal((current) => current + 1);
+          setSelectedElementID(resolvePreferredElement(result.report)?.id ?? null);
+          setScanError(null);
+          return;
+        }
+
+        if (result.status === "expired") {
+          setLastCompletedJobId(null);
+          clearStoredCompletedJob();
+        }
+      } catch (error) {
+        if (isCancelled) {
+          return;
+        }
+
+        if (
+          error instanceof APIError &&
+          (error.status === 404 || error.status === 410)
+        ) {
+          setLastCompletedJobId(null);
+          clearStoredCompletedJob();
+        }
+      }
+    };
+
+    void rehydrateCompletedReport();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [baseReport, jobId, lastCompletedJobId]);
+
+  useEffect(() => {
+    if (!reportJobId || !baseReport) {
+      return;
+    }
+
+    if (isAIEnrichedReport(baseReport)) {
+      setInsightsStatus("ready");
+      return;
+    }
+
+    let isCancelled = false;
+    let timeoutID: number | undefined;
+
+    const scheduleNextPoll = () => {
+      if (isCancelled) {
+        return;
+      }
+
+      timeoutID = window.setTimeout(runPoll, insightsPollIntervalMs);
+    };
+
+    const runPoll = async () => {
+      try {
+        const result = await fetchInsights(reportJobId);
+        if (isCancelled) {
+          return;
+        }
+
+        if (result === null) {
+          resetAIState("none");
+          return;
+        }
+
+        if (result.status === "processing") {
+          setInsightsStatus("processing");
+          scheduleNextPoll();
+          return;
+        }
+
+        if (result.status === "failed") {
+          resetAIState("failed");
+          return;
+        }
+
+        if (result.status === "ready" && result.insights && result.vampire_elements) {
+          setAIInsights(result.insights);
+          setAIVampires(result.vampire_elements);
+          setInsightsStatus("ready");
+          return;
+        }
+
+        setInsightsStatus("processing");
+        scheduleNextPoll();
+      } catch (error) {
+        if (isCancelled) {
+          return;
+        }
+
+        if (error instanceof APIError && error.status === 410) {
+          setLastCompletedJobId(null);
+          clearStoredCompletedJob();
+          resetAIState();
+          return;
+        }
+
+        if (error instanceof APIError && error.status === 404 && error.code === "job_not_found") {
+          setLastCompletedJobId(null);
+          clearStoredCompletedJob();
+          resetAIState();
+          return;
+        }
+
+        scheduleNextPoll();
+      }
+    };
+
+    void runPoll();
+
+    return () => {
+      isCancelled = true;
+      if (timeoutID !== undefined) {
+        window.clearTimeout(timeoutID);
+      }
+    };
+  }, [baseReport, reportJobId, resetAIState, setLastCompletedJobId]);
+
   return {
     inputURL,
     setInputURL,
@@ -380,6 +601,7 @@ export function useAudit() {
     estimatedWaitSeconds,
     submittedURL,
     conflictingJob,
+    insightsStatus,
     resumeConflictingJob,
   };
 }

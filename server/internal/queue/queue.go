@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tronchos/wattless/server/internal/config"
+	"github.com/tronchos/wattless/server/internal/insights"
 	"github.com/tronchos/wattless/server/internal/scanner"
 )
 
@@ -29,6 +30,9 @@ const (
 type ScanService interface {
 	PrepareTarget(context.Context, string) (scanner.PreparedTarget, error)
 	ScanPrepared(context.Context, scanner.PreparedTarget) (scanner.Report, error)
+	GenerateInsights(context.Context, scanner.Report) (insights.ProviderResult, error)
+	ApplyInsights(*scanner.Report, insights.ProviderResult)
+	HasAIProvider() bool
 }
 
 type ipEntry struct {
@@ -52,6 +56,7 @@ type Queue struct {
 	pool            *scanner.BrowserPool
 	logger          *slog.Logger
 	requestTimeout  time.Duration
+	insightsTimeout time.Duration
 	maxQueueSize    int
 	dailyLimit      int
 	jobTTL          time.Duration
@@ -75,6 +80,7 @@ func New(cfg config.Config, scanService ScanService, pool *scanner.BrowserPool, 
 		pool:            pool,
 		logger:          logger,
 		requestTimeout:  cfg.RequestTimeout,
+		insightsTimeout: cfg.LLMTimeout,
 		maxQueueSize:    cfg.MaxQueueSize,
 		dailyLimit:      cfg.DailyIPScanLimit,
 		jobTTL:          cfg.JobTTL,
@@ -140,15 +146,16 @@ func (q *Queue) Submit(ctx context.Context, rawURL, clientIP string) (SubmitResu
 
 	entry.Count++
 	job := &Job{
-		ID:            q.idFunc(),
-		ClientIP:      normalizedIP,
-		RawURL:        rawURL,
-		NormalizedURL: preparedTarget.NormalizedURL,
-		Hostname:      preparedTarget.Hostname,
-		ResolvedIP:    preparedTarget.ResolvedIP,
-		Status:        StatusQueued,
-		CreatedAt:     now,
-		LastPolledAt:  now,
+		ID:             q.idFunc(),
+		ClientIP:       normalizedIP,
+		RawURL:         rawURL,
+		NormalizedURL:  preparedTarget.NormalizedURL,
+		Hostname:       preparedTarget.Hostname,
+		ResolvedIP:     preparedTarget.ResolvedIP,
+		Status:         StatusQueued,
+		InsightsStatus: InsightsStatusNone,
+		CreatedAt:      now,
+		LastPolledAt:   now,
 	}
 	q.jobsByID[job.ID] = job
 	q.liveJobByIP[normalizedIP] = job.ID
@@ -178,6 +185,58 @@ func (q *Queue) Get(_ context.Context, jobID string) (JobResponse, error) {
 	}
 
 	return JobResponse{}, ErrJobNotFound
+}
+
+func (q *Queue) GetInsights(_ context.Context, jobID string) (InsightsResponse, error) {
+	now := q.now()
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if !q.scanService.HasAIProvider() {
+		return InsightsResponse{}, ErrInsightsUnavailable
+	}
+
+	if job, ok := q.jobsByID[jobID]; ok {
+		job.LastPolledAt = now
+
+		switch job.Status {
+		case StatusQueued, StatusScanning:
+			return InsightsResponse{JobID: job.ID, Status: InsightsStatusProcessing}, nil
+		case StatusCompleted:
+			switch job.InsightsStatus {
+			case InsightsStatusReady:
+				if job.Report == nil {
+					return InsightsResponse{}, ErrInsightsUnavailable
+				}
+
+				report := cloneReport(job.Report)
+				if report == nil {
+					return InsightsResponse{}, ErrInsightsUnavailable
+				}
+
+				reportInsights := report.Insights
+				return InsightsResponse{
+					JobID:           job.ID,
+					Status:          InsightsStatusReady,
+					Insights:        &reportInsights,
+					VampireElements: append([]scanner.ResourceSummary(nil), report.VampireElements...),
+				}, nil
+			case InsightsStatusFailed:
+				return InsightsResponse{JobID: job.ID, Status: InsightsStatusFailed}, nil
+			default:
+				return InsightsResponse{JobID: job.ID, Status: InsightsStatusProcessing}, nil
+			}
+		default:
+			return InsightsResponse{}, ErrInsightsUnavailable
+		}
+	}
+
+	if tombstone, ok := q.tombstones[jobID]; ok && tombstone.ExpiresAt.After(now) {
+		return InsightsResponse{}, &ExpiredError{Job: tombstone.Job}
+	}
+
+	return InsightsResponse{}, ErrJobNotFound
 }
 
 func (q *Queue) StartCleanup(ctx context.Context) {
@@ -314,15 +373,22 @@ func (q *Queue) runJob(jobID string) {
 	}
 
 	job.CompletedAt = finishedAt
+	startInsights := false
 	if err != nil {
 		job.Status = StatusFailed
+		job.InsightsStatus = InsightsStatusNone
 		job.PublicError = publicScanError(err)
 		q.logger.Warn("scan_job_failed", "job_id", job.ID, "url", job.NormalizedURL, "error", err)
 	} else {
 		job.Status = StatusCompleted
 		job.PublicError = ""
-		reportCopy := report
-		job.Report = &reportCopy
+		job.Report = cloneReport(&report)
+		if q.scanService.HasAIProvider() {
+			job.InsightsStatus = InsightsStatusProcessing
+			startInsights = true
+		} else {
+			job.InsightsStatus = InsightsStatusNone
+		}
 	}
 
 	if !job.StartedAt.IsZero() {
@@ -332,7 +398,53 @@ func (q *Queue) runJob(jobID string) {
 	jobsToStart := q.takeDispatchableLocked(finishedAt)
 	q.mu.Unlock()
 
+	if startInsights {
+		go q.runInsights(jobID)
+	}
 	q.startJobs(jobsToStart)
+}
+
+func (q *Queue) runInsights(jobID string) {
+	q.mu.Lock()
+	job, ok := q.jobsByID[jobID]
+	if !ok || job.Status != StatusCompleted || job.Report == nil || job.InsightsStatus != InsightsStatusProcessing {
+		q.mu.Unlock()
+		return
+	}
+
+	reportSnapshot := cloneReport(job.Report)
+	q.mu.Unlock()
+	if reportSnapshot == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), q.insightsTimeout)
+	result, err := q.scanService.GenerateInsights(ctx, *reportSnapshot)
+	cancel()
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	job, ok = q.jobsByID[jobID]
+	if !ok || job.Status != StatusCompleted || job.Report == nil || job.InsightsStatus != InsightsStatusProcessing {
+		return
+	}
+
+	if err != nil {
+		job.InsightsStatus = InsightsStatusFailed
+		q.logger.Warn("scan_insights_failed", "job_id", job.ID, "url", job.NormalizedURL, "error", err)
+		return
+	}
+
+	enrichedReport := cloneReport(job.Report)
+	if enrichedReport == nil {
+		job.InsightsStatus = InsightsStatusFailed
+		return
+	}
+
+	q.scanService.ApplyInsights(enrichedReport, result)
+	job.Report = enrichedReport
+	job.InsightsStatus = InsightsStatusReady
 }
 
 func (q *Queue) observeDurationLocked(duration time.Duration) {
@@ -365,7 +477,7 @@ func (q *Queue) jobResponseLocked(job *Job) JobResponse {
 		Status:   job.Status,
 		Position: 0,
 		Error:    job.PublicError,
-		Report:   job.Report,
+		Report:   cloneReport(job.Report),
 	}
 
 	if job.Status == StatusQueued {
@@ -471,4 +583,144 @@ func nextUTCMidnight(now time.Time) time.Time {
 
 func QueueRetryAfter() time.Duration {
 	return defaultQueueRetryAfter
+}
+
+func cloneReport(report *scanner.Report) *scanner.Report {
+	if report == nil {
+		return nil
+	}
+
+	cloned := *report
+	cloned.SiteProfile = cloneSiteProfile(report.SiteProfile)
+	cloned.BreakdownByType = cloneResourceBreakdowns(report.BreakdownByType)
+	cloned.BreakdownByParty = cloneResourceBreakdowns(report.BreakdownByParty)
+	cloned.Insights = cloneScanInsights(report.Insights)
+	cloned.VampireElements = cloneResourceSummaries(report.VampireElements)
+	cloned.Analysis = cloneAnalysis(report.Analysis)
+	cloned.Screenshot = cloneScreenshot(report.Screenshot)
+	cloned.Methodology = cloneMethodology(report.Methodology)
+	cloned.Warnings = cloneStrings(report.Warnings)
+	return &cloned
+}
+
+func cloneSiteProfile(profile scanner.SiteProfile) scanner.SiteProfile {
+	profile.Evidence = cloneStrings(profile.Evidence)
+	return profile
+}
+
+func cloneResourceBreakdowns(items []scanner.ResourceBreakdown) []scanner.ResourceBreakdown {
+	if items == nil {
+		return nil
+	}
+
+	return append([]scanner.ResourceBreakdown(nil), items...)
+}
+
+func cloneScanInsights(scanInsights insights.ScanInsights) insights.ScanInsights {
+	scanInsights.TopActions = cloneTopActions(scanInsights.TopActions)
+	return scanInsights
+}
+
+func cloneTopActions(actions []insights.TopAction) []insights.TopAction {
+	if actions == nil {
+		return nil
+	}
+
+	cloned := make([]insights.TopAction, len(actions))
+	for index, action := range actions {
+		cloned[index] = action
+		cloned[index].Evidence = cloneStrings(action.Evidence)
+		cloned[index].RelatedResourceIDs = cloneStrings(action.RelatedResourceIDs)
+		cloned[index].VisibleRelatedResourceIDs = cloneStrings(action.VisibleRelatedResourceIDs)
+		cloned[index].RecommendedFix = cloneRecommendedFix(action.RecommendedFix)
+	}
+	return cloned
+}
+
+func cloneResourceSummaries(items []scanner.ResourceSummary) []scanner.ResourceSummary {
+	if items == nil {
+		return nil
+	}
+
+	cloned := make([]scanner.ResourceSummary, len(items))
+	for index, item := range items {
+		cloned[index] = item
+		cloned[index].AssetInsight = cloneAssetInsight(item.AssetInsight)
+		if item.BoundingBox != nil {
+			box := *item.BoundingBox
+			cloned[index].BoundingBox = &box
+		}
+	}
+	return cloned
+}
+
+func cloneAssetInsight(asset scanner.AssetInsight) scanner.AssetInsight {
+	asset.Evidence = cloneStrings(asset.Evidence)
+	asset.RecommendedFix = cloneRecommendedFix(asset.RecommendedFix)
+	return asset
+}
+
+func cloneAnalysis(analysis scanner.Analysis) scanner.Analysis {
+	analysis.Findings = cloneAnalysisFindings(analysis.Findings)
+	analysis.ResourceGroups = cloneResourceGroups(analysis.ResourceGroups)
+	return analysis
+}
+
+func cloneAnalysisFindings(findings []scanner.AnalysisFinding) []scanner.AnalysisFinding {
+	if findings == nil {
+		return nil
+	}
+
+	cloned := make([]scanner.AnalysisFinding, len(findings))
+	for index, finding := range findings {
+		cloned[index] = finding
+		cloned[index].Evidence = cloneStrings(finding.Evidence)
+		cloned[index].RelatedResourceIDs = cloneStrings(finding.RelatedResourceIDs)
+	}
+	return cloned
+}
+
+func cloneResourceGroups(groups []scanner.ResourceGroup) []scanner.ResourceGroup {
+	if groups == nil {
+		return nil
+	}
+
+	cloned := make([]scanner.ResourceGroup, len(groups))
+	for index, group := range groups {
+		cloned[index] = group
+		cloned[index].RelatedResourceIDs = cloneStrings(group.RelatedResourceIDs)
+	}
+	return cloned
+}
+
+func cloneScreenshot(screenshot scanner.Screenshot) scanner.Screenshot {
+	if screenshot.Tiles == nil {
+		return screenshot
+	}
+
+	screenshot.Tiles = append([]scanner.ScreenshotTile(nil), screenshot.Tiles...)
+	return screenshot
+}
+
+func cloneMethodology(methodology scanner.Methodology) scanner.Methodology {
+	methodology.Assumptions = cloneStrings(methodology.Assumptions)
+	return methodology
+}
+
+func cloneRecommendedFix(fix *scanner.FixSuggestion) *scanner.FixSuggestion {
+	if fix == nil {
+		return nil
+	}
+
+	cloned := *fix
+	cloned.Changes = cloneStrings(fix.Changes)
+	return &cloned
+}
+
+func cloneStrings(values []string) []string {
+	if values == nil {
+		return nil
+	}
+
+	return append([]string(nil), values...)
 }

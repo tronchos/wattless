@@ -30,12 +30,11 @@ func main() {
 
 	hostingClient := hosting.NewClient(cfg.GreencheckBaseURL, cfg.RequestTimeout)
 	ruleBasedProvider := insights.NewRuleBasedProvider()
-	var insightProvider insights.Provider = ruleBasedProvider
+	var aiProvider insights.Provider
 	if cfg.AIProvider == "gemini" && cfg.GeminiAPIKey != "" {
-		geminiProvider := insights.NewGeminiProvider(cfg.GeminiAPIKey, cfg.GeminiModel, cfg.LLMTimeout)
-		insightProvider = insights.NewCompositeProvider(geminiProvider, ruleBasedProvider)
+		aiProvider = insights.NewGeminiProvider(cfg.GeminiAPIKey, cfg.GeminiModel, cfg.LLMTimeout)
 	}
-	scanService := scanner.NewService(cfg, hostingClient, insightProvider, logger)
+	scanService := scanner.NewService(cfg, hostingClient, ruleBasedProvider, aiProvider, logger)
 	browserPool := scanner.NewBrowserPool(cfg.ConcurrentScanLimit)
 	jobQueue := queue.New(cfg, scanService, browserPool, logger)
 	cleanupCtx, stopCleanup := context.WithCancel(context.Background())

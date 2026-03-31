@@ -1,12 +1,14 @@
 import type {
   APIErrorPayload,
   ScanJobResponse,
+  ScanInsightsResponse,
   ScanReport,
 } from "@/lib/types";
 
 export class APIError extends Error {
   status: number;
   retryAfterSeconds: number | null;
+  code: string | null;
   job?: ScanJobResponse;
 
   constructor(
@@ -14,6 +16,7 @@ export class APIError extends Error {
     options: {
       status: number;
       retryAfterSeconds?: number | null;
+      code?: string | null;
       job?: ScanJobResponse;
     },
   ) {
@@ -21,6 +24,7 @@ export class APIError extends Error {
     this.name = "APIError";
     this.status = options.status;
     this.retryAfterSeconds = options.retryAfterSeconds ?? null;
+    this.code = options.code ?? null;
     this.job = options.job;
   }
 }
@@ -47,6 +51,29 @@ export async function pollScanJob(jobId: string): Promise<ScanJobResponse> {
   });
 
   return parseJobResponse(response, "No se pudo consultar el estado del turno");
+}
+
+export async function fetchInsights(jobId: string): Promise<ScanInsightsResponse | null> {
+  const response = await fetch(`/api/v1/scans/${encodeURIComponent(jobId)}/insights`, {
+    headers: withClientIdentity(),
+    cache: "no-store",
+  });
+
+  if (response.status === 404) {
+    const payload = (await response.json().catch(() => null)) as unknown;
+    const errorPayload = asAPIErrorPayload(payload);
+
+    if (errorPayload?.code === "insights_unavailable") {
+      return null;
+    }
+
+    throw new APIError(errorPayload?.error ?? "No se pudo consultar el estado de insights", {
+      status: response.status,
+      code: errorPayload?.code ?? null,
+    });
+  }
+
+  return parseInsightsResponse(response, "No se pudo consultar el estado de insights");
 }
 
 export function buildScreenshotTileURL(jobId: string, tileIndex: number): string {
@@ -117,6 +144,37 @@ export function isScanJobResponse(value: unknown): value is ScanJobResponse {
   return true;
 }
 
+export function isScanInsightsResponse(value: unknown): value is ScanInsightsResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (typeof value.job_id !== "string" || typeof value.status !== "string") {
+    return false;
+  }
+
+  if (
+    value.status !== "processing" &&
+    value.status !== "ready" &&
+    value.status !== "failed"
+  ) {
+    return false;
+  }
+
+  if (value.insights !== undefined && !isRecord(value.insights)) {
+    return false;
+  }
+
+  if (
+    value.vampire_elements !== undefined &&
+    !Array.isArray(value.vampire_elements)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 async function parseJobResponse(
   response: Response,
   fallbackMessage: string,
@@ -130,11 +188,35 @@ async function parseJobResponse(
     throw new APIError(errorPayload?.error ?? fallbackMessage, {
       status: response.status,
       retryAfterSeconds,
+      code: errorPayload?.code ?? null,
       job: conflictJob,
     });
   }
 
   if (!isScanJobResponse(payload)) {
+    throw new Error("La respuesta del servidor no tiene el formato esperado.");
+  }
+
+  return payload;
+}
+
+async function parseInsightsResponse(
+  response: Response,
+  fallbackMessage: string,
+): Promise<ScanInsightsResponse> {
+  const retryAfterSeconds = parseRetryAfter(response.headers.get("Retry-After"));
+  const payload = (await response.json().catch(() => null)) as unknown;
+
+  if (!response.ok) {
+    const errorPayload = asAPIErrorPayload(payload);
+    throw new APIError(errorPayload?.error ?? fallbackMessage, {
+      status: response.status,
+      retryAfterSeconds,
+      code: errorPayload?.code ?? null,
+    });
+  }
+
+  if (!isScanInsightsResponse(payload)) {
     throw new Error("La respuesta del servidor no tiene el formato esperado.");
   }
 
@@ -156,6 +238,7 @@ function asAPIErrorPayload(payload: unknown): APIErrorPayload | null {
 
   return {
     error: payload.error,
+    code: typeof payload.code === "string" ? payload.code : undefined,
   };
 }
 

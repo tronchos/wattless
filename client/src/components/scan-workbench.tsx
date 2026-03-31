@@ -77,6 +77,7 @@ export function ScanWorkbench() {
     submittedURL,
     reportJobId,
     conflictingJob,
+    insightsStatus,
     resumeConflictingJob,
   } = useAudit();
 
@@ -265,6 +266,7 @@ export function ScanWorkbench() {
                     
                     <InsightsPanel
                       report={report}
+                      insightsStatus={insightsStatus}
                       selectedElementID={selectedElementID}
                       onSelectElement={setSelectedElementID}
                     />

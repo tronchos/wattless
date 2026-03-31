@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tronchos/wattless/server/internal/insights"
 	"github.com/tronchos/wattless/server/internal/scanner"
 )
 
 type JobStatus string
+type InsightsStatus string
 
 const (
 	StatusQueued    JobStatus = "queued"
@@ -16,23 +18,29 @@ const (
 	StatusCompleted JobStatus = "completed"
 	StatusFailed    JobStatus = "failed"
 	StatusExpired   JobStatus = "expired"
+
+	InsightsStatusNone       InsightsStatus = "none"
+	InsightsStatusProcessing InsightsStatus = "processing"
+	InsightsStatusReady      InsightsStatus = "ready"
+	InsightsStatusFailed     InsightsStatus = "failed"
 )
 
 type Job struct {
-	ID            string
-	ClientIP      string
-	RawURL        string
-	NormalizedURL string
-	Hostname      string
-	ResolvedIP    string
-	Status        JobStatus
-	Position      int
-	Report        *scanner.Report
-	PublicError   string
-	CreatedAt     time.Time
-	StartedAt     time.Time
-	CompletedAt   time.Time
-	LastPolledAt  time.Time
+	ID             string
+	ClientIP       string
+	RawURL         string
+	NormalizedURL  string
+	Hostname       string
+	ResolvedIP     string
+	Status         JobStatus
+	InsightsStatus InsightsStatus
+	Position       int
+	Report         *scanner.Report
+	PublicError    string
+	CreatedAt      time.Time
+	StartedAt      time.Time
+	CompletedAt    time.Time
+	LastPolledAt   time.Time
 }
 
 type JobResponse struct {
@@ -50,12 +58,20 @@ type SubmitResult struct {
 	Deduplicated bool
 }
 
+type InsightsResponse struct {
+	JobID           string                    `json:"job_id"`
+	Status          InsightsStatus            `json:"status"`
+	Insights        *insights.ScanInsights    `json:"insights,omitempty"`
+	VampireElements []scanner.ResourceSummary `json:"vampire_elements,omitempty"`
+}
+
 var (
-	ErrQueueFull          = errors.New("scan queue is full")
-	ErrDailyLimitExceeded = errors.New("daily scan limit exceeded")
-	ErrJobConflict        = errors.New("job conflict")
-	ErrJobExpired         = errors.New("job expired")
-	ErrJobNotFound        = errors.New("job not found")
+	ErrQueueFull           = errors.New("scan queue is full")
+	ErrDailyLimitExceeded  = errors.New("daily scan limit exceeded")
+	ErrJobConflict         = errors.New("job conflict")
+	ErrJobExpired          = errors.New("job expired")
+	ErrJobNotFound         = errors.New("job not found")
+	ErrInsightsUnavailable = errors.New("insights unavailable")
 )
 
 type DailyLimitError struct {
