@@ -174,7 +174,7 @@ type enrichedResource struct {
 	Type             string
 	MIMEType         string
 	Hostname         string
-	Party            string
+	Party            Party
 	StatusCode       int
 	Bytes            int64
 	Failed           bool

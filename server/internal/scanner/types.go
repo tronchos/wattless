@@ -20,7 +20,7 @@ type ResourceSummary struct {
 	Type                  string       `json:"type"`
 	MIMEType              string       `json:"mime_type"`
 	Hostname              string       `json:"hostname"`
-	Party                 string       `json:"party"`
+	Party                 Party        `json:"party"`
 	StatusCode            int          `json:"status_code"`
 	Bytes                 int64        `json:"bytes"`
 	Failed                bool         `json:"failed"`

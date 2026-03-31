@@ -11,9 +11,6 @@ import (
 )
 
 const (
-	partyFirst = "first_party"
-	partyThird = "third_party"
-
 	positionAboveFold = "above_fold"
 	positionNearFold  = "near_fold"
 	positionBelowFold = "below_fold"
@@ -38,6 +35,16 @@ const (
 	thirdPartyVideo     = "video_embed"
 	thirdPartyPayment   = "payment"
 	thirdPartyUnknown   = "unknown"
+)
+
+type Party string
+
+const (
+	PartyFirst Party = "first_party"
+	PartyThird Party = "third_party"
+
+	partyFirst = PartyFirst
+	partyThird = PartyThird
 )
 
 func normalizeType(resourceType, mimeType, rawURL string) string {
@@ -96,7 +103,7 @@ func resourcePath(rawURL string) string {
 	}
 	return parsed.Path
 }
-func classifyParty(pageHostname, assetHostname string) string {
+func classifyParty(pageHostname, assetHostname string) Party {
 	if pageHostname == "" || assetHostname == "" {
 		return partyThird
 	}

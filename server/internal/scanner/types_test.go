@@ -52,3 +52,19 @@ func TestReportJSONIncludesMetaAndMethodology(t *testing.T) {
 		t.Fatal("expected scanner version in JSON payload")
 	}
 }
+
+func TestResourceSummaryPartyMarshalsAsString(t *testing.T) {
+	summary := ResourceSummary{
+		ID:    "hero",
+		Party: PartyFirst,
+	}
+
+	raw, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal resource summary: %v", err)
+	}
+
+	if !strings.Contains(string(raw), `"party":"first_party"`) {
+		t.Fatalf("expected party to keep string wire contract, got %s", string(raw))
+	}
+}

@@ -8,7 +8,7 @@ func buildBreakdowns(resources []enrichedResource, totalBytes int64) ([]Resource
 
 	for _, resource := range resources {
 		addToBucket(typeBuckets, resource.Type, resource.Bytes)
-		addToBucket(partyBuckets, resource.Party, resource.Bytes)
+		addToBucket(partyBuckets, string(resource.Party), resource.Bytes)
 	}
 
 	return sortBuckets(typeBuckets, totalBytes), sortBuckets(partyBuckets, totalBytes)
