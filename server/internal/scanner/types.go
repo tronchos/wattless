@@ -15,31 +15,31 @@ type SiteProfile struct {
 }
 
 type ResourceSummary struct {
-	ID                    string       `json:"id"`
-	URL                   string       `json:"url"`
-	Type                  string       `json:"type"`
-	MIMEType              string       `json:"mime_type"`
-	Hostname              string       `json:"hostname"`
-	Party                 Party        `json:"party"`
-	StatusCode            int          `json:"status_code"`
-	Bytes                 int64        `json:"bytes"`
-	Failed                bool         `json:"failed"`
-	FailureReason         string       `json:"failure_reason"`
-	TransferShare         float64      `json:"transfer_share"`
-	EstimatedSavingsBytes int64        `json:"estimated_savings_bytes"`
-	PositionBand          PositionBand `json:"position_band"`
-	VisualRole            VisualRole   `json:"visual_role"`
-	DOMTag                string       `json:"dom_tag"`
-	LoadingAttr           string       `json:"loading_attr"`
-	FetchPriority         string       `json:"fetch_priority"`
-	ResponsiveImage       bool         `json:"responsive_image"`
-	NaturalWidth          int          `json:"natural_width,omitempty"`
-	NaturalHeight         int          `json:"natural_height,omitempty"`
-	VisibleRatio          float64      `json:"visible_ratio,omitempty"`
-	IsThirdPartyTool      bool         `json:"is_third_party_tool"`
-	ThirdPartyKind        string       `json:"third_party_kind"`
-	AssetInsight          AssetInsight `json:"asset_insight"`
-	BoundingBox           *BoundingBox `json:"bounding_box"`
+	ID                    string         `json:"id"`
+	URL                   string         `json:"url"`
+	Type                  string         `json:"type"`
+	MIMEType              string         `json:"mime_type"`
+	Hostname              string         `json:"hostname"`
+	Party                 Party          `json:"party"`
+	StatusCode            int            `json:"status_code"`
+	Bytes                 int64          `json:"bytes"`
+	Failed                bool           `json:"failed"`
+	FailureReason         string         `json:"failure_reason"`
+	TransferShare         float64        `json:"transfer_share"`
+	EstimatedSavingsBytes int64          `json:"estimated_savings_bytes"`
+	PositionBand          PositionBand   `json:"position_band"`
+	VisualRole            VisualRole     `json:"visual_role"`
+	DOMTag                string         `json:"dom_tag"`
+	LoadingAttr           string         `json:"loading_attr"`
+	FetchPriority         string         `json:"fetch_priority"`
+	ResponsiveImage       bool           `json:"responsive_image"`
+	NaturalWidth          int            `json:"natural_width,omitempty"`
+	NaturalHeight         int            `json:"natural_height,omitempty"`
+	VisibleRatio          float64        `json:"visible_ratio,omitempty"`
+	IsThirdPartyTool      bool           `json:"is_third_party_tool"`
+	ThirdPartyKind        ThirdPartyKind `json:"third_party_kind"`
+	AssetInsight          AssetInsight   `json:"asset_insight"`
+	BoundingBox           *BoundingBox   `json:"bounding_box"`
 }
 
 type FixSuggestion = insights.RecommendedFix

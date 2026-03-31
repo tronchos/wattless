@@ -80,7 +80,7 @@ func buildResourceGroups(resources []enrichedResource, viewportHeight int) []Res
 		})
 	}
 
-	thirdPartyByKind := map[string][]enrichedResource{}
+	thirdPartyByKind := map[ThirdPartyKind][]enrichedResource{}
 	for _, resource := range resources {
 		if !resource.IsThirdPartyTool {
 			continue
@@ -92,7 +92,7 @@ func buildResourceGroups(resources []enrichedResource, viewportHeight int) []Res
 			continue
 		}
 		groups = append(groups, ResourceGroup{
-			ID:                 "group-third-party-" + sanitizeGroupID(kind),
+			ID:                 "group-third-party-" + sanitizeGroupID(string(kind)),
 			Kind:               groupKindThirdParty,
 			Label:              thirdPartyGroupLabel(kind),
 			TotalBytes:         sumBytes(members),
@@ -311,7 +311,7 @@ func looksLikePersonalSlug(rawURL string) bool {
 	}
 	return true
 }
-func thirdPartyGroupLabel(kind string) string {
+func thirdPartyGroupLabel(kind ThirdPartyKind) string {
 	switch kind {
 	case thirdPartyAnalytics:
 		return "Cluster de analítica"

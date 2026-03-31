@@ -55,10 +55,11 @@ func TestReportJSONIncludesMetaAndMethodology(t *testing.T) {
 
 func TestResourceSummaryPartyMarshalsAsString(t *testing.T) {
 	summary := ResourceSummary{
-		ID:           "hero",
-		Party:        PartyFirst,
-		PositionBand: PositionBandAboveFold,
-		VisualRole:   VisualRoleHeroMedia,
+		ID:             "hero",
+		Party:          PartyFirst,
+		PositionBand:   PositionBandAboveFold,
+		VisualRole:     VisualRoleHeroMedia,
+		ThirdPartyKind: ThirdPartyKindUnknown,
 	}
 
 	raw, err := json.Marshal(summary)
@@ -74,6 +75,9 @@ func TestResourceSummaryPartyMarshalsAsString(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"visual_role":"hero_media"`) {
 		t.Fatalf("expected visual role to keep string wire contract, got %s", string(raw))
+	}
+	if !strings.Contains(string(raw), `"third_party_kind":"unknown"`) {
+		t.Fatalf("expected third-party kind to keep string wire contract, got %s", string(raw))
 	}
 }
 

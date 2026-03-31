@@ -588,7 +588,7 @@ func candidateDominatesGroup(resource enrichedResource, group ResourceGroup) boo
 	}
 	return float64(resource.Bytes)/float64(group.TotalBytes) >= dominantGroupShareThreshold
 }
-func dominantThirdPartyKind(resources []enrichedResource) string {
+func dominantThirdPartyKind(resources []enrichedResource) ThirdPartyKind {
 	bestKind := thirdPartyUnknown
 	bestBytes := int64(0)
 	for _, resource := range resources {

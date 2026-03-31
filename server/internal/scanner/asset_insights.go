@@ -171,7 +171,7 @@ func makeInsightResource(resource ResourceSummary) insights.ResourceContext {
 		NaturalHeight:         resource.NaturalHeight,
 		VisibleRatio:          resource.VisibleRatio,
 		IsThirdPartyTool:      resource.IsThirdPartyTool,
-		ThirdPartyKind:        resource.ThirdPartyKind,
+		ThirdPartyKind:        string(resource.ThirdPartyKind),
 	}
 }
 

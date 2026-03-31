@@ -191,7 +191,7 @@ type enrichedResource struct {
 	PositionBand     PositionBand
 	VisualRole       VisualRole
 	IsThirdPartyTool bool
-	ThirdPartyKind   string
+	ThirdPartyKind   ThirdPartyKind
 }
 
 func (s *Service) resolveHosting(ctx context.Context, hostname string) (hosting.Result, []string) {
@@ -255,7 +255,7 @@ func makeInsightResources(resources []ResourceSummary) []insights.ResourceContex
 			NaturalHeight:         resource.NaturalHeight,
 			VisibleRatio:          resource.VisibleRatio,
 			IsThirdPartyTool:      resource.IsThirdPartyTool,
-			ThirdPartyKind:        resource.ThirdPartyKind,
+			ThirdPartyKind:        string(resource.ThirdPartyKind),
 		})
 	}
 	return output

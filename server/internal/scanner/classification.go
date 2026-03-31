@@ -10,15 +10,7 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
-const (
-	thirdPartyAnalytics = "analytics"
-	thirdPartyAds       = "ads"
-	thirdPartySupport   = "support"
-	thirdPartySocial    = "social"
-	thirdPartyVideo     = "video_embed"
-	thirdPartyPayment   = "payment"
-	thirdPartyUnknown   = "unknown"
-)
+const ()
 
 type Party string
 
@@ -75,6 +67,26 @@ const (
 	visualRoleBelowFoldMedia = VisualRoleBelowFoldMedia
 	visualRoleDecorative     = VisualRoleDecorative
 	visualRoleUnknown        = VisualRoleUnknown
+)
+
+type ThirdPartyKind string
+
+const (
+	ThirdPartyKindAnalytics ThirdPartyKind = "analytics"
+	ThirdPartyKindAds       ThirdPartyKind = "ads"
+	ThirdPartyKindSupport   ThirdPartyKind = "support"
+	ThirdPartyKindSocial    ThirdPartyKind = "social"
+	ThirdPartyKindVideo     ThirdPartyKind = "video_embed"
+	ThirdPartyKindPayment   ThirdPartyKind = "payment"
+	ThirdPartyKindUnknown   ThirdPartyKind = "unknown"
+
+	thirdPartyAnalytics = ThirdPartyKindAnalytics
+	thirdPartyAds       = ThirdPartyKindAds
+	thirdPartySupport   = ThirdPartyKindSupport
+	thirdPartySocial    = ThirdPartyKindSocial
+	thirdPartyVideo     = ThirdPartyKindVideo
+	thirdPartyPayment   = ThirdPartyKindPayment
+	thirdPartyUnknown   = ThirdPartyKindUnknown
 )
 
 func normalizeType(resourceType, mimeType, rawURL string) string {
@@ -254,7 +266,7 @@ func classifyPositionBand(box *BoundingBox, _ float64, viewportHeight int) Posit
 		return positionBelowFold
 	}
 }
-func classifyThirdPartyKind(resource enrichedResource) string {
+func classifyThirdPartyKind(resource enrichedResource) ThirdPartyKind {
 	if resource.Party != partyThird {
 		return thirdPartyUnknown
 	}

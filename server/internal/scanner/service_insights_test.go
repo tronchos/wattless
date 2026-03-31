@@ -76,9 +76,10 @@ func TestMakeInsightAnalysisKeepsGroupKindWireStrings(t *testing.T) {
 
 func TestMakeInsightResourceKeepsVisualRoleWireStrings(t *testing.T) {
 	resource := ResourceSummary{
-		ID:           "hero",
-		PositionBand: PositionBandAboveFold,
-		VisualRole:   VisualRoleHeroMedia,
+		ID:             "hero",
+		PositionBand:   PositionBandAboveFold,
+		VisualRole:     VisualRoleHeroMedia,
+		ThirdPartyKind: ThirdPartyKindAnalytics,
 	}
 
 	result := makeInsightResource(resource)
@@ -87,6 +88,9 @@ func TestMakeInsightResourceKeepsVisualRoleWireStrings(t *testing.T) {
 	}
 	if result.VisualRole != "hero_media" {
 		t.Fatalf("expected string visual role in resource bridge, got %q", result.VisualRole)
+	}
+	if result.ThirdPartyKind != "analytics" {
+		t.Fatalf("expected string third-party kind in resource bridge, got %q", result.ThirdPartyKind)
 	}
 }
 
