@@ -44,6 +44,7 @@ func NewRouter(cfg config.Config, jobQueue JobQueue, logger *slog.Logger) http.H
 	mux.HandleFunc("POST /api/v1/scans", h.handleSubmitScan)
 	mux.HandleFunc("GET /api/v1/scans/{jobID}", h.handleGetScan)
 	mux.HandleFunc("GET /api/v1/scans/{jobID}/screenshot", h.handleGetScreenshot)
+	mux.HandleFunc("GET /", h.handleSPA)
 
 	return withLogging(logger, withSecurityHeaders(withCORS(cfg.ClientOrigin, mux)))
 }
@@ -236,6 +237,25 @@ func (h handler) handleGetScreenshot(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write(data); err != nil {
 		h.logger.Warn("scan_screenshot_write_failed", "job_id", jobID, "tile", tile.ID, "error", err)
 	}
+}
+
+func (h handler) handleSPA(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+		writeJSONNoStore(w, http.StatusNotFound, errorResponse{Error: "Ruta API no encontrada."}, h.logger)
+		return
+	}
+
+	if assetPath, ok := normalizeStaticPath(r.URL.Path); ok && hasEmbeddedStaticFile(r.URL.Path) {
+		serveEmbeddedPath(w, r, assetPath)
+		return
+	}
+
+	if !hasEmbeddedIndex() {
+		http.NotFound(w, r)
+		return
+	}
+
+	serveEmbeddedPath(w, r, "index.html")
 }
 
 func isClientError(err error) bool {

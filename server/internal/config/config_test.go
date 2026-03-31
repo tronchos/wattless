@@ -52,3 +52,21 @@ func TestEnvOrFileFallsBackToEnvWhenFileIsEmpty(t *testing.T) {
 		t.Fatalf("expected env fallback when file is empty, got %q", got)
 	}
 }
+
+func TestLoadClientOriginDefaultsToLocalhost(t *testing.T) {
+	t.Setenv("CLIENT_ORIGIN", "")
+
+	cfg := Load()
+	if cfg.ClientOrigin != "http://localhost:5173" {
+		t.Fatalf("expected default localhost:5173, got %q", cfg.ClientOrigin)
+	}
+}
+
+func TestLoadClientOriginUsesEnvValue(t *testing.T) {
+	t.Setenv("CLIENT_ORIGIN", "https://wattless.example")
+
+	cfg := Load()
+	if cfg.ClientOrigin != "https://wattless.example" {
+		t.Fatalf("expected CLIENT_ORIGIN value, got %q", cfg.ClientOrigin)
+	}
+}

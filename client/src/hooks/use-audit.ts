@@ -119,6 +119,7 @@ export function useAudit() {
   const [submittedURL, setSubmittedURL] = useState<string | null>(
     () => restoredJob?.url ?? null,
   );
+  const [reportJobId, setReportJobId] = useState<string | null>(null);
   const [conflictingJob, setConflictingJob] = useState<ScanJobResponse | null>(null);
   const pendingPreviousReportRef = useRef<ScanReport | null>(null);
 
@@ -187,10 +188,11 @@ export function useAudit() {
   }, []);
 
   const applyCompletedReport = useCallback(
-    (nextReport: ScanReport) => {
+    (nextReport: ScanReport, completedJobId: string) => {
       const previous = pendingPreviousReportRef.current;
       setPreviousReport(previous?.url === nextReport.url ? previous : null);
       setReport(nextReport);
+      setReportJobId(completedJobId);
       setSelectionSignal((current) => current + 1);
       setSelectedElementID(resolvePreferredElement(nextReport)?.id ?? null);
       setScanError(null);
@@ -210,6 +212,7 @@ export function useAudit() {
     pendingPreviousReportRef.current = report;
     setPreviousReport(null);
     setReport(null);
+    setReportJobId(null);
     setConflictingJob(null);
     setScanError(null);
     setScanProgressIndex(0);
@@ -248,9 +251,10 @@ export function useAudit() {
         pendingPreviousReportRef.current = currentReport;
         setPreviousReport(null);
         setReport(null);
+        setReportJobId(null);
 
         if (job.status === "completed" && job.report) {
-          applyCompletedReport(job.report);
+          applyCompletedReport(job.report, job.job_id);
           return;
         }
 
@@ -300,7 +304,7 @@ export function useAudit() {
         }
 
         if (result.status === "completed" && result.report) {
-          applyCompletedReport(result.report);
+          applyCompletedReport(result.report, jobId);
           return;
         }
 
@@ -361,6 +365,7 @@ export function useAudit() {
     inputURL,
     setInputURL,
     report,
+    reportJobId,
     previousReport,
     selectedElementID,
     setSelectedElementID: selectElement,

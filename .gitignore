@@ -1,12 +1,14 @@
-client/.next
 client/node_modules
+client/dist
 client/.env.local
 client/.env.*.local
 server/.env
 server/.cache
 server/tmp
-dist
+server/bin
+server/internal/http/static/dist/*
+!server/internal/http/static/dist/.keep
 coverage
 .DS_Store
-
+.tmp
 .claude

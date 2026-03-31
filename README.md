@@ -1,153 +1,103 @@
 # Wattless
 
-> Wattless no es solo un auditor; es un reductor de entropía digital. Aplicamos los principios de la termodinámica al desarrollo web para que el software deje de calentar el planeta innecesariamente.
+> Reductor de entropía digital. Escanea una URL, mide bytes, CO₂, LCP y devuelve un informe con recomendaciones de código real.
 
-Wattless es una auditoría web de sostenibilidad y rendimiento construida para la Hackatón CubePath 2026. Escanea una URL real, mide transferencia, `CO2` por visita, `LCP`, `FCP`, dependencia de terceros y hosting verde, y devuelve un informe técnico con recomendaciones accionables y un `Green Fix` orientado a código real.
+Wattless audita sostenibilidad y rendimiento web para la [Hackatón CubePath 2026](https://github.com/midudev/hackaton-cubepath-2026). Lanza un Chromium headless contra una URL pública, captura tráfico de red, métricas de render, screenshot completo y genera un informe técnico con insights accionables.
 
-## Qué problema resuelve
+![Dashboard de Wattless](docs/media/wattless-dashboard.webp)
 
-La web tiene un coste invisible. Cada recurso pesado, cada script bloqueante y cada tercero innecesario aumentan la transferencia, empeoran la experiencia y convierten energía útil en calor residual en servidores y dispositivos.
-
-Wattless convierte ese coste invisible en un informe claro:
-
-- bytes transferidos en runtime
-- `CO2` estimado por visita
-- `LCP`, `FCP`, `load` y tiempo de scripts
-- recursos dominantes y ahorro potencial
-- resumen IA y refactor guiado para un snippet real
-
-## Estado de despliegue
-
-- URL pública en CubePath: `pendiente de desplegar`
-- Estado actual: stack de producción validado localmente con `docker/compose.prod.yml`
-- Repo público: `https://github.com/tronchos/wattless`
-
-## Capturas y material visual
-
-- Captura actual del dashboard: [`docs/media/wattless-dashboard.webp`](docs/media/wattless-dashboard.webp)
-- Reporte JSON usado para esa captura: [`docs/media/wattless-dashboard-report.json`](docs/media/wattless-dashboard-report.json)
-- Material visual disponible: `docs/media/`
-- Guion del pitch: [`docs/pitch.md`](docs/pitch.md)
-
-![Dashboard actual de Wattless](docs/media/wattless-dashboard.webp)
-
-## Cómo funciona
-
-1. El frontend de Next.js envía la URL al BFF same-origin.
-2. El backend en Go lanza Chromium con `rod` y captura tráfico de red, rendimiento y screenshot.
-3. Wattless calcula `CO2` por visita usando la fórmula base de Sustainable Web Design.
-4. Se consulta Greencheck para validar si el hosting es verde.
-5. Se priorizan los recursos más costosos y se generan insights IA con fallback heurístico.
-6. El usuario puede pegar un snippet real y obtener un `Green Fix` listo para revisar.
-
-## Arquitectura del monorepo
-
-- `client/`: Next.js App Router, dashboard, BFF y exportación de Markdown.
-- `server/`: API Go, scanner con `rod`, cálculo de CO2, hosting check e insights.
-- `docker/`: desarrollo local y despliegue de producción para CubePath.
-
-## Metodología del cálculo
-
-Wattless usa la aproximación base de Sustainable Web Design para traducir transferencia en impacto por visita:
-
-```text
-(bytes / 1_000_000_000) * 0.8 * 0.75 * 442
-```
-
-Supuestos explícitos del MVP:
-
-- `0.8 kWh / GB` de transferencia
-- `0.75` como factor de retorno/visitas repetidas
-- `442 gCO2e / kWh` como promedio global
-
-Además del CO2, el informe incorpora `LCP`, `FCP` y tiempo de scripts para conectar sostenibilidad con experiencia de usuario.
-
-## Cómo usamos CubePath
-
-CubePath es el destino de despliegue de producción del proyecto:
-
-- `client` se expone públicamente desde CubePath
-- `server` queda en red interna privada
-- el frontend consume el backend a través del BFF de Next
-- la topología está pensada para ejecutarse con contenedores separados y healthchecks
-
-Archivos relevantes:
-
-- `docker/client.prod.Dockerfile`
-- `docker/server.prod.Dockerfile`
-- `docker/compose.prod.yml`
-
-## Endpoints principales
-
-### Backend Go
-
-- `GET /healthz`
-- `POST /api/v1/scans`
-- `POST /api/v1/green-fix`
-
-### Frontend Next.js
-
-- `GET /api/healthz`
-- `POST /api/scan`
-- `POST /api/green-fix`
-
-## Desarrollo local
-
-### Requisitos
-
-- Go `1.24+`
-- Node.js `20+`
-- Docker y Docker Compose para validar el stack de producción local
-
-### Arranque rápido
+## Desarrollo
 
 ```bash
 make install
-make server-dev
-make client-dev
+make dev           # http://localhost:5173
 ```
 
-### Validación con Docker
+El servidor Vite corre en `:5173` y hace proxy de `/api` y `/healthz` hacia el backend Go en `:18080`.
+
+## Producción
 
 ```bash
-docker compose -f docker/compose.prod.yml up --build
+make prod          # http://localhost:8080
 ```
 
-### Variables principales
+Un solo binario Go sirve el frontend embebido, la API y el scanner. Sin Node runtime, sin CORS, sin coordinación de procesos.
 
-#### Backend
+## Build manual
 
-- `PORT` default `8080`
-- `CLIENT_ORIGIN` default `http://localhost:3000,http://localhost:5173` (allowlist separada por comas)
-- `REQUEST_TIMEOUT` default `20s`
-- `NAVIGATION_TIMEOUT` default `15s`
-- `NETWORK_IDLE_WAIT` default `1500ms`
-- `VIEWPORT_WIDTH` default `1440`
-- `VIEWPORT_HEIGHT` default `900`
-- `BROWSER_BIN` ruta opcional a Chromium/Chrome
-- `GREENCHECK_BASE_URL` default `https://api.thegreenwebfoundation.org/api/v3/greencheck`
-- `AI_PROVIDER` default `rule_based`
-- `GEMINI_API_KEY` opcional
-- `GEMINI_API_KEY_FILE` opcional, con prioridad sobre `GEMINI_API_KEY` cuando apunta a un archivo no vacío
-- `GEMINI_MODEL` default `gemini-2.0-flash`
-- `LLM_TIMEOUT` default `12s`
+```bash
+make build         # Compila frontend + backend en server/bin/wattless
+```
 
-#### Frontend
+## Tests
 
-- `SCANNER_API_URL` backend interno consumido por el BFF
-- `NEXT_PUBLIC_APP_URL` opcional para incluir la URL pública de Wattless en el Markdown exportado
+```bash
+make test          # Go tests + Vitest
+```
 
-## Limitaciones reales
+## Arquitectura
 
-- El cálculo de `CO2` es una estimación basada en transferencia, no una medición eléctrica directa.
-- El `Green Fix` trabaja sobre snippets pegados por la persona usuaria; no reconstruye automáticamente el código fuente de un sitio tercero.
+```
+Browser → Go binary (SPA estática + API + scanner)
+               ↓
+        Chromium headless (rod)
+               ↓
+       Análisis + insights → JSON + screenshot binario
+```
+
+- `client/` — Vite + React + Tailwind. Build estático embebido en el binario Go con `go:embed`.
+- `server/` — Go. Scanner con rod, análisis de recursos, cálculo de CO₂, insights IA con fallback heurístico.
+- `docker/` — Compose para dev y producción.
+
+### Endpoints
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/healthz` | Health check |
+| `POST` | `/api/v1/scans` | Encolar un scan |
+| `GET` | `/api/v1/scans/{id}` | Estado y reporte del scan |
+| `GET` | `/api/v1/scans/{id}/screenshot` | Screenshot binario (tiles) |
+| `GET` | `/*` | Frontend SPA (fallback a index.html) |
+
+## Fórmula CO₂
+
+```
+(bytes / 1_000_000_000) × 0.8 × 0.75 × 442 = gCO₂/visita
+```
+
+| Factor | Valor | Fuente |
+|--------|-------|--------|
+| Intensidad energética | 0.8 kWh/GB | Sustainable Web Design |
+| Factor de retorno | 0.75 | Visitas repetidas |
+| Intensidad de carbono | 442 gCO₂e/kWh | Promedio global |
+
+## Variables de entorno
+
+### Backend
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `PORT` | `8080` | Puerto del servidor |
+| `CLIENT_ORIGIN` | `http://localhost:5173` | Origins permitidos (CORS, separados por coma) |
+| `BROWSER_BIN` | — | Ruta a Chromium |
+| `REQUEST_TIMEOUT` | `20s` | Timeout general |
+| `NAVIGATION_TIMEOUT` | `15s` | Timeout de navegación |
+| `VIEWPORT_WIDTH` | `1440` | Ancho del viewport |
+| `VIEWPORT_HEIGHT` | `900` | Alto del viewport |
+| `AI_PROVIDER` | `rule_based` | `rule_based` o `gemini` |
+| `GEMINI_API_KEY` | — | API key de Gemini |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | Modelo de Gemini |
+
+### Frontend (solo dev)
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `VITE_PROXY_TARGET` | `http://localhost:8080` | Backend para el proxy del dev server |
+| `VITE_PUBLIC_APP_URL` | — | URL pública para exportación Markdown |
+
+## Limitaciones
+
+- El cálculo de CO₂ es una estimación basada en transferencia, no una medición eléctrica directa.
 - El veredicto de hosting depende de la disponibilidad de The Green Web Foundation.
 - Algunos recursos no tienen anclaje visual y no pueden resaltarse sobre la captura.
-- El escáner solo acepta destinos públicos `http/https`; bloquea `localhost`, IPs privadas y hosts internos.
-
-## Roadmap corto post-hackatón
-
-- despliegue público en CubePath con dominio final
-- GIF corto del flujo completo una vez exista URL pública
-- más contexto de third-party cost y budget por recurso
-- exportación de reportes más orientada a PRs técnicos
+- El escáner solo acepta destinos públicos `http/https`; bloquea localhost, IPs privadas y hosts internos.

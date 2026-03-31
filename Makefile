@@ -1,25 +1,31 @@
 SHELL := /bin/bash
 
-.PHONY: install client-install server-install dev test client-dev server-dev
+EMBEDDED_UI_DIR := server/internal/http/static/dist
 
-install: server-install client-install
+.PHONY: install dev prod test build clean
 
-server-install:
-	cd server && go mod tidy
-
-client-install:
+install:
 	cd client && npm install
-
-server-dev:
-	cd server && go run ./cmd/api
-
-client-dev:
-	cd client && npm run dev
+	cd server && go mod tidy
 
 dev:
 	docker compose -f docker/compose.yml up --build
 
+prod:
+	docker compose -f docker/compose.prod.yml up --build
+
 test:
 	cd server && go test ./...
-	cd client && npm run lint
+	cd client && npm test
 
+build:
+	cd client && npm run build
+	mkdir -p $(EMBEDDED_UI_DIR)
+	find $(EMBEDDED_UI_DIR) -mindepth 1 ! -name '.keep' -exec rm -rf {} +
+	cp -a client/dist/. $(EMBEDDED_UI_DIR)/
+	touch $(EMBEDDED_UI_DIR)/.keep
+	cd server && go build -o bin/wattless ./cmd/api
+
+clean:
+	rm -rf client/dist server/bin
+	find $(EMBEDDED_UI_DIR) -mindepth 1 ! -name '.keep' -exec rm -rf {} +

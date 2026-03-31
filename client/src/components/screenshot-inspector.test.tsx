@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
 
 import { ScreenshotInspector } from "./screenshot-inspector";
 import type { ScreenshotPayload, VampireElement } from "@/lib/types";
@@ -33,22 +33,10 @@ const baseScreenshot: ScreenshotPayload = {
 const baseElements: VampireElement[] = [];
 
 describe("ScreenshotInspector", () => {
-  beforeEach(() => {
-    let nextURL = 0;
-    vi.spyOn(URL, "createObjectURL").mockImplementation(() => {
-      nextURL += 1;
-      return `blob:tile-${nextURL}`;
-    });
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("renders tiles using blob URLs and revokes them on unmount", async () => {
-    const { unmount } = render(
+  it("renders tiles using the server screenshot endpoint", async () => {
+    render(
       <ScreenshotInspector
+        jobId="wl_job"
         screenshot={baseScreenshot}
         elements={baseElements}
         selectedElement={null}
@@ -57,23 +45,18 @@ describe("ScreenshotInspector", () => {
       />,
     );
 
-    expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
     expect((await screen.findByAltText("Document tile tile-1")).getAttribute("src")).toBe(
-      "blob:tile-1",
+      "/api/v1/scans/wl_job/screenshot?tile=0",
     );
     expect((await screen.findByAltText("Document tile tile-2")).getAttribute("src")).toBe(
-      "blob:tile-2",
+      "/api/v1/scans/wl_job/screenshot?tile=1",
     );
-
-    unmount();
-
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:tile-1");
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:tile-2");
   });
 
-  it("revokes previous tile URLs when the screenshot changes", async () => {
+  it("updates tile URLs when the job changes", async () => {
     const { rerender } = render(
       <ScreenshotInspector
+        jobId="wl_job"
         screenshot={baseScreenshot}
         elements={baseElements}
         selectedElement={null}
@@ -97,6 +80,7 @@ describe("ScreenshotInspector", () => {
 
     rerender(
       <ScreenshotInspector
+        jobId="wl_job_2"
         screenshot={nextScreenshot}
         elements={baseElements}
         selectedElement={null}
@@ -105,12 +89,8 @@ describe("ScreenshotInspector", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:tile-1");
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:tile-2");
-    });
     expect((await screen.findByAltText("Document tile tile-3")).getAttribute("src")).toBe(
-      "blob:tile-3",
+      "/api/v1/scans/wl_job_2/screenshot?tile=0",
     );
   });
 
@@ -133,6 +113,7 @@ describe("ScreenshotInspector", () => {
 
     render(
       <ScreenshotInspector
+        jobId="wl_single"
         screenshot={composedScreenshot}
         elements={baseElements}
         selectedElement={null}
@@ -142,7 +123,7 @@ describe("ScreenshotInspector", () => {
     );
 
     expect((await screen.findByAltText("Document tile tile-0")).getAttribute("src")).toBe(
-      "blob:tile-1",
+      "/api/v1/scans/wl_single/screenshot?tile=0",
     );
     expect(screen.queryByText("Tiled Capture")).toBeNull();
     expect(screen.getByText("Full Height")).toBeDefined();

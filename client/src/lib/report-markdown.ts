@@ -2,12 +2,11 @@ import { formatBytes, formatGrams, formatMilliseconds } from "@/lib/api";
 import type { ScanReport } from "@/lib/types";
 
 const wattlessRepositoryURL = "https://github.com/tronchos/wattless";
-const wattlessAppURL =
-  process.env.NEXT_PUBLIC_APP_URL?.trim() || "despliegue público pendiente";
 
 export function createMarkdownReport(
   report: ScanReport,
 ): string {
+  const wattlessAppURL = resolveWattlessAppURL();
   const textualFirstRenderNote = inferTextualFirstRenderNote(report);
   const lcpValue = report.performance.render_metrics_complete
     ? formatMilliseconds(report.performance.lcp_ms)
@@ -100,6 +99,10 @@ export function createMarkdownReport(
   }
 
   return lines.join("\n");
+}
+
+function resolveWattlessAppURL(): string {
+  return import.meta.env.VITE_PUBLIC_APP_URL?.trim() || "despliegue público pendiente";
 }
 
 function formatInspectorCoverage(report: ScanReport): string {

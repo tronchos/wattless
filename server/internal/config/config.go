@@ -38,7 +38,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		Port:                        envOrDefault("PORT", "8080"),
-		ClientOrigin:                envOrDefault("CLIENT_ORIGIN", "http://localhost:3000,http://localhost:5173"),
+		ClientOrigin:                clientOriginOrDefault(),
 		RequestTimeout:              durationOrDefault("REQUEST_TIMEOUT", 20*time.Second),
 		ConcurrentScanLimit:         intOrDefault("CONCURRENT_SCAN_LIMIT", 3),
 		MaxQueueSize:                intOrDefault("MAX_QUEUE_SIZE", 20),
@@ -61,6 +61,13 @@ func Load() Config {
 		GeminiModel:                 envOrDefault("GEMINI_MODEL", "gemini-2.0-flash"),
 		LLMTimeout:                  durationOrDefault("LLM_TIMEOUT", 12*time.Second),
 	}
+}
+
+func clientOriginOrDefault() string {
+	if value := strings.TrimSpace(os.Getenv("CLIENT_ORIGIN")); value != "" {
+		return value
+	}
+	return "http://localhost:5173"
 }
 
 func (cfg Config) Validate() error {

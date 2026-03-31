@@ -1,6 +1,32 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/space-grotesk-latin-wght.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/ibm-plex-mono-latin-400.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/ibm-plex-mono-latin-500.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
 @theme {
+  --font-space-grotesk: "Space Grotesk";
+  --font-ibm-plex-mono: "IBM Plex Mono";
   --font-headline: var(--font-space-grotesk), "Space Grotesk", sans-serif;
   --font-body: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace;
   --font-label: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace;
@@ -85,12 +111,18 @@ textarea {
   font: inherit;
 }
 
-h1, h2, h3, h4, h5, h6, .font-headline {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.font-headline {
   font-family: var(--font-headline);
 }
 
 .material-symbols-outlined {
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
   vertical-align: middle;
 }
 
@@ -119,9 +151,24 @@ h1, h2, h3, h4, h5, h6, .font-headline {
   border-radius: 10px;
 }
 
-/* Fallback styles to keep existing components slightly functional while we refactor them */
-.app-shell { position: relative; }
-.panel { background: var(--color-surface-container); border-radius: 1rem; }
-.bento-grid { display: grid; gap: 1.5rem; }
-.mono { font-family: var(--font-body); }
-.muted { color: var(--color-on-surface-variant); }
+.app-shell {
+  position: relative;
+}
+
+.panel {
+  background: var(--color-surface-container);
+  border-radius: 1rem;
+}
+
+.bento-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.mono {
+  font-family: var(--font-body);
+}
+
+.muted {
+  color: var(--color-on-surface-variant);
+}

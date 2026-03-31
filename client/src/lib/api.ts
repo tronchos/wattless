@@ -25,12 +25,14 @@ export class APIError extends Error {
   }
 }
 
+const clientIdentityStorageKey = "wattless.client_id";
+
 export async function submitScan(url: string): Promise<ScanJobResponse> {
-  const response = await fetch("/api/scan", {
+  const response = await fetch("/api/v1/scans", {
     method: "POST",
-    headers: {
+    headers: withClientIdentity({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify({ url }),
     cache: "no-store",
   });
@@ -39,11 +41,20 @@ export async function submitScan(url: string): Promise<ScanJobResponse> {
 }
 
 export async function pollScanJob(jobId: string): Promise<ScanJobResponse> {
-  const response = await fetch(`/api/scan/${jobId}`, {
+  const response = await fetch(`/api/v1/scans/${encodeURIComponent(jobId)}`, {
+    headers: withClientIdentity(),
     cache: "no-store",
   });
 
   return parseJobResponse(response, "No se pudo consultar el estado del turno");
+}
+
+export function buildScreenshotTileURL(jobId: string, tileIndex: number): string {
+  const params = new URLSearchParams({
+    tile: String(tileIndex),
+  });
+
+  return `/api/v1/scans/${encodeURIComponent(jobId)}/screenshot?${params.toString()}`;
 }
 
 export function isScanReport(value: unknown): value is ScanReport {
@@ -163,6 +174,35 @@ function parseRetryAfter(value: string | null): number | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function withClientIdentity(headers?: HeadersInit): Headers {
+  const nextHeaders = new Headers(headers);
+  nextHeaders.set("X-Wattless-Client-Id", getClientIdentity());
+  return nextHeaders;
+}
+
+function getClientIdentity(): string {
+  if (typeof window === "undefined") {
+    return "wlc_server";
+  }
+
+  const storedIdentity = window.localStorage.getItem(clientIdentityStorageKey);
+  if (storedIdentity) {
+    return storedIdentity;
+  }
+
+  const generatedIdentity = `wlc_${generateUUID()}`;
+  window.localStorage.setItem(clientIdentityStorageKey, generatedIdentity);
+  return generatedIdentity;
+}
+
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export function formatBytes(bytes: number): string {

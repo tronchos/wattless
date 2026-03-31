@@ -2,11 +2,13 @@
 .DS_Store
 .env*
 .claude/
+.tmp/
 docker/
 Makefile
 *.md
-client/.next
 client/node_modules
+client/dist
+server/internal/http/static/dist
 server/.cache
 server/tmp
 **/*_test.go

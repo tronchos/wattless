@@ -6,11 +6,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"log/slog"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/tronchos/wattless/server/internal/config"
@@ -57,6 +59,16 @@ func newScreenshotReport(mimeType string, tilePayloads ...string) *scanner.Repor
 			Tiles:    tiles,
 		},
 	}
+}
+
+func withStaticFSTestFixture(t *testing.T, fixture fs.FS) {
+	t.Helper()
+
+	previous := staticDistFS
+	staticDistFS = fixture
+	t.Cleanup(func() {
+		staticDistFS = previous
+	})
 }
 
 func TestSubmitScanReturnsBadRequestForInvalidURL(t *testing.T) {
@@ -446,5 +458,63 @@ func TestCORSPreflightReturnsAllowedHeadersForConfiguredOrigin(t *testing.T) {
 	}
 	if got := recorder.Header().Get("Access-Control-Allow-Headers"); got != "Content-Type, X-Wattless-Client-Id" {
 		t.Fatalf("unexpected allow-headers %q", got)
+	}
+}
+
+func TestSPAHandlerServesEmbeddedAssetWhenPresent(t *testing.T) {
+	withStaticFSTestFixture(t, fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<html>index</html>")},
+		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('vite');")},
+	})
+
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000"}, stubQueue{}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodGet, "/assets/app.js", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+	if body := recorder.Body.String(); body != "console.log('vite');" {
+		t.Fatalf("unexpected asset body %q", body)
+	}
+}
+
+func TestSPAHandlerFallsBackToIndexForClientRoutes(t *testing.T) {
+	withStaticFSTestFixture(t, fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<html>vite-app</html>")},
+	})
+
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000"}, stubQueue{}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodGet, "/report/example.com", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+	if body := recorder.Body.String(); body != "<html>vite-app</html>" {
+		t.Fatalf("unexpected SPA body %q", body)
+	}
+}
+
+func TestSPAHandlerKeepsUnknownAPIRoutesAsJSON404(t *testing.T) {
+	withStaticFSTestFixture(t, fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<html>vite-app</html>")},
+	})
+
+	router := NewRouter(config.Config{ClientOrigin: "http://localhost:3000"}, stubQueue{}, slog.Default())
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/v1/unknown", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", recorder.Code)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("expected json response, got %q", got)
 	}
 }

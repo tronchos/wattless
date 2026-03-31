@@ -175,7 +175,8 @@ describe("InsightsPanel", () => {
     const unanchored = screen.getByRole("button", { name: /Acción sin anchor/i });
     const anchored = screen.getByRole("button", { name: /Acción anclada/i });
 
-    expect(anchored.getAttribute("class")).toContain("bg-[rgba(155,214,126,0.08)]");
-    expect(unanchored.getAttribute("class")).not.toContain("bg-[rgba(155,214,126,0.08)]");
+    expect(anchored.getAttribute("class")).toContain("bg-primary/10");
+    expect(anchored.getAttribute("class")).toContain("border-primary/20");
+    expect(unanchored.getAttribute("class")).not.toContain("bg-primary/10");
   });
 });

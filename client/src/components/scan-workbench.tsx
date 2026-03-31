@@ -1,5 +1,3 @@
-"use client";
-
 import {
   AnimatePresence,
   LazyMotion,
@@ -77,6 +75,7 @@ export function ScanWorkbench() {
     queuePosition,
     estimatedWaitSeconds,
     submittedURL,
+    reportJobId,
     conflictingJob,
     resumeConflictingJob,
   } = useAudit();
@@ -243,13 +242,16 @@ export function ScanWorkbench() {
                 >
                   <div className="relative">
                     <div className="sticky top-8">
-                      <ScreenshotInspector
-                        screenshot={report.screenshot}
-                        elements={report.vampire_elements}
-                        selectedElement={selectedElement}
-                        selectionSignal={selectionSignal}
-                        onSelect={setSelectedElementID}
-                      />
+                      {reportJobId ? (
+                        <ScreenshotInspector
+                          jobId={reportJobId}
+                          screenshot={report.screenshot}
+                          elements={report.vampire_elements}
+                          selectedElement={selectedElement}
+                          selectionSignal={selectionSignal}
+                          onSelect={setSelectedElementID}
+                        />
+                      ) : null}
                     </div>
                   </div>
 

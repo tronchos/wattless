@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMarkdownReport } from "./report-markdown";
 import type { ScanReport } from "./types";
 
@@ -97,6 +97,10 @@ function makeReport(): ScanReport {
 }
 
 describe("createMarkdownReport", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("adds a textual-first-render note when above-fold visuals are zero but render-critical bytes exist", () => {
     const markdown = createMarkdownReport(makeReport());
 
@@ -110,5 +114,13 @@ describe("createMarkdownReport", () => {
     const markdown = createMarkdownReport(report);
 
     expect(markdown).not.toContain("El primer render depende sobre todo de texto, fuentes y CSS.");
+  });
+
+  it("uses the Vite public app URL when it is configured", () => {
+    vi.stubEnv("VITE_PUBLIC_APP_URL", "https://wattless.example");
+
+    const markdown = createMarkdownReport(makeReport());
+
+    expect(markdown).toContain("Generado con Wattless: https://wattless.example");
   });
 });

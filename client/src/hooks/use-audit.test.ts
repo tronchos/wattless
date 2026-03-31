@@ -191,6 +191,10 @@ describe("useAudit", () => {
 
     const { result } = renderHook(() => useAudit());
 
+    act(() => {
+      result.current.setInputURL("https://example.com");
+    });
+
     await act(async () => {
       await result.current.handleSubmit();
     });
@@ -205,6 +209,7 @@ describe("useAudit", () => {
 
     expect(mockPollScanJob).toHaveBeenCalledWith("wl_job");
     expect(result.current.report?.url).toBe("https://example.com");
+    expect(result.current.reportJobId).toBe("wl_job");
     expect(result.current.isScanning).toBe(false);
     expect(window.sessionStorage.getItem("wattless.active_scan_job")).toBeNull();
   });
@@ -331,6 +336,10 @@ describe("useAudit", () => {
     });
 
     const { result } = renderHook(() => useAudit());
+
+    act(() => {
+      result.current.setInputURL("https://example.com");
+    });
 
     await act(async () => {
       await result.current.handleSubmit();
@@ -467,6 +476,10 @@ describe("useAudit", () => {
 
     const { result } = renderHook(() => useAudit());
 
+    act(() => {
+      result.current.setInputURL("https://example.com");
+    });
+
     await act(async () => {
       await result.current.handleSubmit();
     });
@@ -515,6 +528,10 @@ describe("useAudit", () => {
 
     const { result } = renderHook(() => useAudit());
 
+    act(() => {
+      result.current.setInputURL("https://example.com");
+    });
+
     await act(async () => {
       await result.current.handleSubmit();
     });
@@ -546,6 +563,10 @@ describe("useAudit", () => {
     );
 
     const { result } = renderHook(() => useAudit());
+
+    act(() => {
+      result.current.setInputURL("https://example.com");
+    });
 
     await act(async () => {
       await result.current.handleSubmit();
@@ -584,6 +605,10 @@ describe("useAudit", () => {
       });
 
     const { result } = renderHook(() => useAudit());
+
+    act(() => {
+      result.current.setInputURL("https://example.com");
+    });
 
     await act(async () => {
       await result.current.handleSubmit();

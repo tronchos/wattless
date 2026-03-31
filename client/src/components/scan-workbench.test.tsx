@@ -186,6 +186,7 @@ describe("ScanWorkbench", () => {
       queuePosition: null,
       estimatedWaitSeconds: null,
       submittedURL: "https://example.com",
+      reportJobId: "wl_report",
       conflictingJob: null,
       resumeConflictingJob: vi.fn(),
     });
