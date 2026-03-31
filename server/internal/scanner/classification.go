@@ -10,8 +10,6 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
-const ()
-
 type Party string
 
 const (

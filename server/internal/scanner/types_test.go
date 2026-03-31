@@ -100,3 +100,45 @@ func TestResourceGroupKindMarshalsAsString(t *testing.T) {
 		t.Fatalf("expected group position band to keep string wire contract, got %s", string(raw))
 	}
 }
+
+func TestTypedEnumsUnmarshalFromWireStrings(t *testing.T) {
+	var summary ResourceSummary
+	if err := json.Unmarshal([]byte(`{
+		"id":"hero",
+		"party":"first_party",
+		"position_band":"above_fold",
+		"visual_role":"hero_media",
+		"third_party_kind":"unknown"
+	}`), &summary); err != nil {
+		t.Fatalf("unmarshal resource summary: %v", err)
+	}
+
+	if summary.Party != PartyFirst {
+		t.Fatalf("expected typed party after unmarshal, got %#v", summary.Party)
+	}
+	if summary.PositionBand != PositionBandAboveFold {
+		t.Fatalf("expected typed position band after unmarshal, got %#v", summary.PositionBand)
+	}
+	if summary.VisualRole != VisualRoleHeroMedia {
+		t.Fatalf("expected typed visual role after unmarshal, got %#v", summary.VisualRole)
+	}
+	if summary.ThirdPartyKind != ThirdPartyKindUnknown {
+		t.Fatalf("expected typed third-party kind after unmarshal, got %#v", summary.ThirdPartyKind)
+	}
+
+	var group ResourceGroup
+	if err := json.Unmarshal([]byte(`{
+		"id":"gallery",
+		"kind":"repeated_gallery",
+		"position_band":"mixed"
+	}`), &group); err != nil {
+		t.Fatalf("unmarshal resource group: %v", err)
+	}
+
+	if group.Kind != GroupKindRepeatedGallery {
+		t.Fatalf("expected typed group kind after unmarshal, got %#v", group.Kind)
+	}
+	if group.PositionBand != PositionBandMixed {
+		t.Fatalf("expected typed group position band after unmarshal, got %#v", group.PositionBand)
+	}
+}
