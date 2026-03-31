@@ -81,7 +81,7 @@ export function ScanWorkbench() {
     resumeConflictingJob,
   } = useAudit();
 
-  const [isTechnicalDetailsOpen, setIsTechnicalDetailsOpen] = useState(false);
+  const [isTechnicalDetailsOpen, setIsTechnicalDetailsOpen] = useState(true);
 
   return (
     <LazyMotion features={domAnimation}>
