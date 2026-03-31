@@ -22,10 +22,10 @@ export function ScoreRing({ score, grams }: ScoreRingProps) {
     <article className="bg-surface-container-low p-6 lg:p-8 rounded-3xl flex flex-col gap-2 group hover:bg-surface-container transition-colors h-full w-full border border-outline-variant/5 hover:border-outline-variant/20">
       <div className="flex justify-between w-full">
         <span className="text-on-surface-variant text-xs uppercase tracking-widest font-label flex items-center gap-2">
-          Carbon Score
+          Puntaje de carbono
         </span>
         <div className="opacity-50 text-xs font-headline font-bold text-primary">
-          GRADE {score}
+          NOTA {score}
         </div>
       </div>
       

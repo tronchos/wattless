@@ -104,6 +104,8 @@ describe("createMarkdownReport", () => {
   it("adds a textual-first-render note when above-fold visuals are zero but render-critical bytes exist", () => {
     const markdown = createMarkdownReport(makeReport());
 
+    expect(markdown).toContain("# Reporte Wattless");
+    expect(markdown).toContain("## Hallazgos");
     expect(markdown).toContain("El primer render depende sobre todo de texto, fuentes y CSS.");
   });
 

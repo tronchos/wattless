@@ -73,9 +73,9 @@ export function InsightsPanel({
       <div className="flex flex-col gap-6 relative z-10">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase font-bold tracking-widest text-primary">SÍNTESIS EDITORIAL</span>
+            <span className="text-[10px] uppercase font-bold tracking-widest text-primary">RESUMEN EJECUTIVO</span>
             <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-primary/10 text-primary flex items-center gap-1 border border-primary/20">
-              <Sparkles className="h-3 w-3" />
+              <Sparkles aria-hidden="true" className="h-3 w-3" />
               {report.insights.provider}
             </span>
             {isProcessing ? (
@@ -96,7 +96,7 @@ export function InsightsPanel({
 
         {compactActions.length > 0 ? (
           <div className="mt-2 border-t border-outline-variant/10 pt-6">
-            <div className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant">Top Actions</div>
+            <div className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant">Acciones prioritarias</div>
             <div className="mt-4 space-y-3">
               {compactActions.map((action) => {
                 const isActive = selectedElementID

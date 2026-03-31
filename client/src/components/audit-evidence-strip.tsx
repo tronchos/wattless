@@ -13,32 +13,32 @@ export function AuditEvidenceStrip({ report }: AuditEvidenceStripProps) {
   const lcpDetail = lcpResource
     ? formatResourceLabel(lcpResource.type)
     : report.analysis.summary.lcp_resource_url
-      ? "Recurso LCP mapeado fuera del overlay"
-      : "No se detectó un asset visual único";
+      ? "Recurso LCP mapeado fuera de la superposición"
+      : "No se detectó un activo visual único";
 
   const items = [
     {
-      label: "Above the fold",
+      label: "Primer viewport",
       value: formatBytes(report.analysis.summary.above_fold_visual_bytes),
       detail: "Peso visual visible en el primer viewport",
     },
     {
-      label: "Below the fold",
+      label: "Debajo del fold",
       value: formatBytes(report.analysis.summary.below_fold_bytes),
       detail: "Contenido que no merece la misma prioridad",
     },
     {
-      label: "LCP resource",
-      value: lcpBytes !== null ? formatBytes(lcpBytes) : "Sin match",
+      label: "Recurso LCP",
+      value: lcpBytes !== null ? formatBytes(lcpBytes) : "Sin coincidencia",
       detail: lcpDetail,
     },
     {
       label: "Analytics",
       value: formatBytes(report.analysis.summary.analytics_bytes),
-      detail: `${report.analysis.summary.analytics_requests} requests`,
+      detail: `${report.analysis.summary.analytics_requests} solicitudes`,
     },
     {
-      label: "Fonts",
+      label: "Fuentes",
       value: formatBytes(report.analysis.summary.font_bytes),
       detail: `${report.analysis.summary.font_requests} archivos`,
     },

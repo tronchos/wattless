@@ -93,7 +93,7 @@ Browser → Go binary (SPA estática + API + scanner)
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `VITE_PROXY_TARGET` | `http://localhost:8080` | Backend para el proxy del dev server |
-| `VITE_PUBLIC_APP_URL` | — | URL pública para exportación Markdown |
+| `VITE_PUBLIC_APP_URL` | — | URL pública para exportación Markdown y metadata social |
 
 ## Limitaciones
 

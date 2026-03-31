@@ -36,7 +36,7 @@ const emptyStateHighlights = [
   },
   {
     id: "findings",
-    title: "Findings",
+    title: "Hallazgos",
     description: "Hallazgos con severidad, confianza y evidencia para decidir qué arreglar primero.",
   },
   {
@@ -100,11 +100,11 @@ export function ScanWorkbench() {
           {!report && (
             <m.div layoutId="scanner-header" className="w-full">
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-4 text-on-surface font-headline">
-                Wattless Audit
+                Wattless
               </h1>
               <p className="text-on-surface-variant max-w-lg mx-auto mb-10 leading-relaxed text-sm sm:text-base">
-                Mide tu huella de carbono digital, analiza activos críticos y optimiza 
-                render con precisión clínica en un solo flujo de trabajo.
+                Mide tu huella de carbono digital, analiza activos críticos y optimiza
+                el render con precisión clínica en un solo flujo de trabajo.
               </p>
             </m.div>
           )}
@@ -112,7 +112,7 @@ export function ScanWorkbench() {
           <div className="w-full">
             <form className="relative w-full" onSubmit={handleSubmit}>
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                <ScanSearch className="h-5 w-5 text-outline" />
+                <ScanSearch aria-hidden="true" className="h-5 w-5 text-outline" />
               </div>
               <label htmlFor="scan-url-input" className="sr-only">URL a analizar</label>
               <input
@@ -136,11 +136,11 @@ export function ScanWorkbench() {
               >
                 {isScanning ? (
                   <>
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                    <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
                     Analizando
                   </>
                 ) : (
-                  "Analyze"
+                  "Analizar"
                 )}
               </button>
             </form>
@@ -201,9 +201,9 @@ export function ScanWorkbench() {
                   
                   <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6 h-full w-full">
                     <MetricCard
-                      label="Payload size"
+                      label="Tamaño de carga"
                       value={formatBytes(report.total_bytes_transferred)}
-                      caption={`${report.summary.total_requests.toLocaleString("es-CO")} requests · ${formatHostingLabel(report)}`}
+                      caption={`${report.summary.total_requests.toLocaleString("es-CO")} solicitudes · ${formatHostingLabel(report)}`}
                       hint="Transferencia observada durante la visita sintética."
                       progress={Math.min(
                         100,
@@ -218,7 +218,7 @@ export function ScanWorkbench() {
                       icon={Leaf}
                     />
                     <MetricCard
-                      label="Performance"
+                      label="Rendimiento"
                       value={formatRenderMetric(report.performance.lcp_ms, report.performance.render_metrics_complete)}
                       caption={`FCP ${formatRenderMetric(report.performance.fcp_ms, report.performance.render_metrics_complete)} · Long Tasks ${formatMilliseconds(report.performance.long_tasks_total_ms)}`}
                       hint="Render crítico y presión real de CPU."
@@ -283,12 +283,12 @@ export function ScanWorkbench() {
                 >
                   <div className="flex items-center gap-4">
                      <div className={`p-2 rounded-full bg-surface-container-highest transition-colors group-hover:bg-primary/20 ${isTechnicalDetailsOpen ? "bg-primary/20" : ""}`}>
-                        <ChevronDown className={`w-5 h-5 text-on-surface-variant transition-transform duration-300 ${isTechnicalDetailsOpen ? "rotate-180 text-primary" : ""}`} />
+                        <ChevronDown aria-hidden="true" className={`w-5 h-5 text-on-surface-variant transition-transform duration-300 ${isTechnicalDetailsOpen ? "rotate-180 text-primary" : ""}`} />
                      </div>
                      <div>
                        <h3 className="text-xl font-bold font-headline text-on-surface">Apéndice Técnico y Evidencia</h3>
                        <p className="text-sm text-on-surface-variant mt-1">
-                         Breakdowns de métricas crudas, pesos en disco y supuestos metodológicos de medición.
+                         Desgloses de métricas crudas, pesos en disco y supuestos metodológicos de medición.
                        </p>
                      </div>
                   </div>
@@ -309,7 +309,7 @@ export function ScanWorkbench() {
                             {/* COL 1: Network & Payload */}
                             <div className="bg-surface-container-high rounded-3xl p-6 border border-outline-variant/10 flex flex-col h-full">
                               <div className="text-primary text-[10px] uppercase tracking-widest font-label font-bold mb-4">
-                                Network & Payload
+                                Red y transferencia
                               </div>
                               <div className="grid grid-cols-2 gap-3 h-full">
                                 <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
@@ -321,7 +321,7 @@ export function ScanWorkbench() {
                                   </div>
                                   <div className="text-xs opacity-70 mt-1.5 flex gap-2 font-medium">
                                      <span className="text-success">{report.summary.successful_requests} OK</span>
-                                     {report.summary.failed_requests > 0 && <span className="text-error">{report.summary.failed_requests} FO</span>}
+                                     {report.summary.failed_requests > 0 && <span className="text-error">{report.summary.failed_requests} fallidas</span>}
                                   </div>
                                 </div>
 
@@ -345,7 +345,7 @@ export function ScanWorkbench() {
                                     {formatMilliseconds(report.performance.dom_content_loaded_ms)} <span className="text-[10px] font-normal text-on-surface-variant uppercase">DCL</span>
                                   </div>
                                   <div className="text-xs opacity-70 mt-1.5">
-                                    Load: {formatMilliseconds(report.performance.load_ms)}
+                                    Carga: {formatMilliseconds(report.performance.load_ms)}
                                   </div>
                                 </div>
 
@@ -369,7 +369,7 @@ export function ScanWorkbench() {
                             {/* COL 2: Performance Lab & CPU */}
                             <div className="bg-surface-container-high rounded-3xl p-6 border border-outline-variant/10 flex flex-col h-full">
                               <div className="text-primary text-[10px] uppercase tracking-widest font-label font-bold mb-4">
-                                Performance Lab & CPU
+                                Rendimiento y CPU
                               </div>
                               <div className="grid grid-cols-2 gap-3 h-full">
                                 <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
@@ -404,7 +404,7 @@ export function ScanWorkbench() {
 
                                 <div className="col-span-2 bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
                                   <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label mb-2 flex justify-between">
-                                    <span>Identidad del LCP (Largest Contentful Paint)</span>
+                                    <span>Identidad del LCP</span>
                                     <span>{report.performance.lcp_size ? formatBytes(report.performance.lcp_size) : ""}</span>
                                   </div>
                                   <div className="text-sm font-medium text-on-surface break-words font-mono bg-surface-container-highest p-2.5 rounded-xl text-xs border border-outline-variant/10">
@@ -443,7 +443,7 @@ export function ScanWorkbench() {
                               
                               <div className="grid grid-cols-2 gap-3 mb-6">
                                 <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
-                                   <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Viewport Fold</div>
+                                   <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Cobertura del fold</div>
                                    <div className="mt-3 flex items-center gap-4">
                                      <div className="h-16 w-3 bg-surface-container-highest rounded-full relative overflow-hidden flex flex-col justify-end border border-outline-variant/10">
                                         <div 
@@ -454,18 +454,18 @@ export function ScanWorkbench() {
                                      <div className="flex flex-col gap-2">
                                        <div className="leading-none">
                                          <div className="text-[15px] font-bold font-headline text-on-surface">{formatBytes(report.analysis.summary.above_fold_visual_bytes)}</div>
-                                         <div className="text-[10px] text-on-surface-variant uppercase mt-0.5">Above Fold</div>
+                                         <div className="text-[10px] text-on-surface-variant uppercase mt-0.5">Primer viewport</div>
                                        </div>
                                        <div className="leading-none">
                                          <div className="text-[15px] font-bold font-headline text-primary">{formatBytes(report.analysis.summary.below_fold_bytes)}</div>
-                                         <div className="text-[10px] text-on-surface-variant uppercase mt-0.5">Below Fold (Oculto)</div>
+                                         <div className="text-[10px] text-on-surface-variant uppercase mt-0.5">Debajo del fold</div>
                                        </div>
                                      </div>
                                    </div>
                                 </div>
 
                                 <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5 flex flex-col justify-center">
-                                   <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Render Critical vs Total</div>
+                                   <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Render crítico vs total</div>
                                    <div className="mt-2 text-2xl font-headline font-bold text-on-surface">
                                       {formatBytes(report.analysis.summary.render_critical_bytes)}
                                    </div>
@@ -478,12 +478,12 @@ export function ScanWorkbench() {
 
                               <div className="bento-grid lg:grid-cols-2 mt-auto">
                                 <BreakdownBars
-                                  title="Breakdown by type"
+                                  title="Desglose por tipo"
                                   subtitle="Peso por recurso"
                                   items={report.breakdown_by_type}
                                 />
                                 <BreakdownBars
-                                  title="Breakdown by party"
+                                  title="Desglose por origen"
                                   subtitle="Propiedad"
                                   items={report.breakdown_by_party}
                                 />
@@ -512,9 +512,9 @@ export function ScanWorkbench() {
             >
               <p className="text-primary text-xs uppercase tracking-widest font-label font-bold flex items-center justify-center sm:justify-start gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
-                   {isScanning ? <LoaderCircle className="w-3 h-3 animate-spin"/> : <Leaf className="w-3 h-3 animate-none"/>}
+                   {isScanning ? <LoaderCircle aria-hidden="true" className="w-3 h-3 animate-spin"/> : <Leaf aria-hidden="true" className="w-3 h-3 animate-none"/>}
                 </span>
-                {isScanning ? "Análisis en progreso" : "Auditoría en reposo"}
+                {isScanning ? "Análisis en progreso" : "En espera"}
               </p>
               <h2 className="mt-5 text-2xl sm:text-3xl font-headline font-bold text-center sm:text-left text-on-surface">
                 {getLoadingHeading(isScanning, jobStatus, queuePosition, scanProgressIndex)}
@@ -586,7 +586,7 @@ function getLoadingHeading(
   scanProgressIndex: number,
 ): string {
   if (!isScanning) {
-    return "Ejecuta un análisis y el espacio de trabajo ensamblará el reporte.";
+    return "Ejecuta un análisis y el espacio de trabajo generará el reporte.";
   }
 
   if (jobStatus === "queued") {
@@ -616,7 +616,7 @@ function getLoadingDescription(
   submittedURL: string | null,
 ): string {
   if (!isScanning) {
-    return "El reporte completo fluye de manera progresiva: empieza por el score global, separa evidencia above/below the fold y termina priorizando hallazgos accionables.";
+    return "El reporte completo fluye de manera progresiva: empieza por el puntaje general, separa evidencia dentro y fuera del primer viewport y termina priorizando hallazgos accionables.";
   }
 
   if (jobStatus === "queued") {
@@ -637,7 +637,7 @@ function getLoadingDescription(
     return `${subject}${waitLabel}`;
   }
 
-  return "Wattless está emulando un perfil moderno para recolectar métricas de transferencia de red, CPU throttling e hitos de render visual para producir un dictamen preciso.";
+  return "Wattless está emulando un perfil moderno para recolectar métricas de transferencia de red, throttling de CPU e hitos de render visual para producir un dictamen preciso.";
 }
 
 function formatWaitTime(seconds: number): string {

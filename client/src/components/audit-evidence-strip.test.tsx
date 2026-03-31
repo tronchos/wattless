@@ -96,6 +96,6 @@ describe("AuditEvidenceStrip", () => {
     render(<AuditEvidenceStrip report={makeReport()} />);
 
     expect(screen.getByText("16.4 KB")).toBeTruthy();
-    expect(screen.getByText("Recurso LCP mapeado fuera del overlay")).toBeTruthy();
+    expect(screen.getByText("Recurso LCP mapeado fuera de la superposición")).toBeTruthy();
   });
 });

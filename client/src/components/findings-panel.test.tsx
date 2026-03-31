@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 import { FindingsPanel } from "./findings-panel";
 import type { AnalysisFinding } from "@/lib/types";
@@ -27,6 +27,12 @@ describe("FindingsPanel", () => {
     expect(hasDuplicateKeyWarning(consoleErrorSpy)).toBe(false);
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it("renders the translated section label", () => {
+    render(<FindingsPanel findings={[]} />);
+
+    expect(screen.getByText("Carga Optimizada")).toBeDefined();
   });
 });
 

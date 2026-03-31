@@ -75,8 +75,11 @@ export function ScreenshotInspector({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h2 className="text-2xl font-bold font-headline text-on-surface">
-            Visual Inspector
+          <h2
+            id="visual-inspector-title"
+            className="text-2xl font-bold font-headline text-on-surface"
+          >
+            Inspector Visual
           </h2>
           <p className="mt-2 text-sm leading-6 text-on-surface-variant">
             Documento completo capturado en el flujo de auditoría, con anclajes visuales
@@ -86,16 +89,16 @@ export function ScreenshotInspector({
 
         <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-widest font-label">
           <span className="rounded-full bg-surface-container px-3 py-1.5 text-on-surface-variant">
-            Document {screenshot.document_width} x {screenshot.document_height}
+            Documento {screenshot.document_width} x {screenshot.document_height}
           </span>
           <span className="rounded-full bg-surface-container px-3 py-1.5 text-on-surface-variant">
             {isTruncated
-              ? `Captured ${screenshot.captured_height}px`
-              : "Full Height"}
+              ? `Captura ${screenshot.captured_height} px`
+              : "Altura completa"}
           </span>
           {screenshot.strategy === "tiled" ? (
             <span className="rounded-full bg-primary/10 px-3 py-1.5 text-primary">
-              Tiled Capture
+              Captura segmentada
             </span>
           ) : null}
           {isTruncated ? (
@@ -106,7 +109,11 @@ export function ScreenshotInspector({
         </div>
       </div>
 
-      <div className="rounded-[1.75rem] border border-outline-variant/10 bg-surface-container-low p-3 md:p-4">
+      <div
+        aria-labelledby="visual-inspector-title"
+        className="rounded-[1.75rem] border border-outline-variant/10 bg-surface-container-low p-3 md:p-4"
+        role="region"
+      >
         <div
           ref={scrollRef}
           className="overflow-visible rounded-[1.25rem] bg-surface-container-highest/60 md:max-h-[72vh] md:overflow-y-auto"
@@ -120,7 +127,8 @@ export function ScreenshotInspector({
             {tileSources.map((tile) => (
               <img
                 key={tile.id}
-                alt={`Document tile ${tile.id}`}
+                alt=""
+                aria-hidden="true"
                 className="absolute left-0 w-full object-cover"
                 src={tile.src}
                 style={{
@@ -143,7 +151,7 @@ export function ScreenshotInspector({
                 <button
                   key={element.id}
                   type="button"
-                  aria-label={`Highlight ${element.url}`}
+                  aria-label={`Resaltar activo ${element.url}`}
                   className={`absolute rounded-xl transition-all ${
                     isActive
                       ? "bg-primary/18 shadow-[inset_0_0_0_2px_rgba(155,214,126,0.9)] z-10"

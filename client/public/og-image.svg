@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Wattless Open Graph">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#09090b" />
+      <stop offset="100%" stop-color="#18181b" />
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <circle cx="965" cy="120" r="170" fill="#34d399" fill-opacity="0.08" />
+  <circle cx="1095" cy="40" r="120" fill="#a7f3d0" fill-opacity="0.06" />
+  <rect x="72" y="74" width="160" height="160" rx="36" fill="#0f1720" stroke="#34d399" stroke-opacity="0.35" />
+  <path
+    d="M114 156c0-27 20-48 48-48 9 0 17 2 25 6-5 29-23 52-54 63-12 4-19-2-19-21Z"
+    fill="url(#glow)"
+  />
+  <path
+    d="M124 186c22-12 39-27 54-48"
+    fill="none"
+    stroke="#d1fae5"
+    stroke-linecap="round"
+    stroke-width="7"
+  />
+  <text x="72" y="332" fill="#f4f4f5" font-family="'Space Grotesk', Arial, sans-serif" font-size="88" font-weight="700">
+    Wattless
+  </text>
+  <text x="72" y="408" fill="#a1a1aa" font-family="'IBM Plex Mono', monospace" font-size="28" letter-spacing="1">
+    Audita bytes, CO2, LCP y cuellos de botella reales del rendimiento web.
+  </text>
+  <rect x="72" y="458" width="306" height="56" rx="28" fill="#34d399" fill-opacity="0.14" stroke="#34d399" stroke-opacity="0.3" />
+  <text x="108" y="494" fill="#a7f3d0" font-family="'IBM Plex Mono', monospace" font-size="22" font-weight="500">
+    Reporte inmediato en español
+  </text>
+</svg>

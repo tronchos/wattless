@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { APIError, fetchInsights, pollScanJob } from "./api";
+import { APIError, fetchInsights, formatResourceLabel, pollScanJob } from "./api";
 
 describe("fetchInsights", () => {
   afterEach(() => {
@@ -355,5 +355,12 @@ describe("pollScanJob", () => {
     expect(result.report?.screenshot.tiles).toEqual([]);
     expect(result.report?.methodology.assumptions).toEqual([]);
     expect(result.report?.warnings).toEqual([]);
+  });
+});
+
+describe("formatResourceLabel", () => {
+  it("keeps xhr and fetch distinct in technical breakdowns", () => {
+    expect(formatResourceLabel("xhr")).toBe("XHR");
+    expect(formatResourceLabel("fetch")).toBe("Fetch");
   });
 });

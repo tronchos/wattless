@@ -20,7 +20,7 @@ export function MetricCard({
   return (
     <article className="bg-surface-container-low p-6 lg:p-8 rounded-3xl flex flex-col gap-2 group hover:bg-surface-container transition-colors h-full w-full border border-outline-variant/5 hover:border-outline-variant/20">
       <span className="text-on-surface-variant text-xs uppercase tracking-widest font-label flex items-center gap-2">
-        {Icon ? <Icon className="h-4 w-4" /> : null} {label}
+        {Icon ? <Icon aria-hidden="true" className="h-4 w-4" /> : null} {label}
       </span>
       <div className="text-5xl font-headline font-bold text-on-surface mt-2">
         {value}

@@ -30,17 +30,17 @@ describe("MarkdownReportCard", () => {
   it("renders the report content", () => {
     render(<MarkdownReportCard report={fakeReport} />);
     expect(screen.getByText(/Mock Report/)).toBeDefined();
-    expect(screen.getByText("Audit Summary")).toBeDefined();
+    expect(screen.getByText("Resumen del reporte")).toBeDefined();
   });
 
-  it("shows 'Copied!' feedback after clicking copy", async () => {
+  it("shows copy feedback after clicking copy", async () => {
     render(<MarkdownReportCard report={fakeReport} />);
 
-    const copyButton = screen.getByRole("button", { name: /copy report/i });
+    const copyButton = screen.getByRole("button", { name: /copiar reporte/i });
     fireEvent.click(copyButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Copied!")).toBeDefined();
+      expect(screen.getByText("¡Copiado!")).toBeDefined();
     });
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
@@ -56,11 +56,11 @@ describe("MarkdownReportCard", () => {
 
     render(<MarkdownReportCard report={fakeReport} />);
 
-    const copyButton = screen.getByRole("button", { name: /copy report/i });
+    const copyButton = screen.getByRole("button", { name: /copiar reporte/i });
     fireEvent.click(copyButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Copied!")).toBeDefined();
+      expect(screen.getByText("¡Copiado!")).toBeDefined();
     });
 
     expect(execCommandSpy).toHaveBeenCalledWith("copy");
@@ -72,11 +72,11 @@ describe("MarkdownReportCard", () => {
 
     render(<MarkdownReportCard report={fakeReport} />);
 
-    const copyButton = screen.getByRole("button", { name: /copy report/i });
+    const copyButton = screen.getByRole("button", { name: /copiar reporte/i });
     fireEvent.click(copyButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Copy failed")).toBeDefined();
+      expect(screen.getByText("Falló la copia")).toBeDefined();
     });
   });
 });

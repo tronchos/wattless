@@ -33,8 +33,8 @@ const baseScreenshot: ScreenshotPayload = {
 const baseElements: VampireElement[] = [];
 
 describe("ScreenshotInspector", () => {
-  it("renders tiles using the server screenshot endpoint", async () => {
-    render(
+  it("renders tiles using the server screenshot endpoint as decorative images", () => {
+    const { container } = render(
       <ScreenshotInspector
         jobId="wl_job"
         screenshot={baseScreenshot}
@@ -45,16 +45,20 @@ describe("ScreenshotInspector", () => {
       />,
     );
 
-    expect((await screen.findByAltText("Document tile tile-1")).getAttribute("src")).toBe(
+    const images = Array.from(container.querySelectorAll("img"));
+
+    expect(images[0]?.getAttribute("src")).toBe(
       "/api/v1/scans/wl_job/screenshot?tile=0",
     );
-    expect((await screen.findByAltText("Document tile tile-2")).getAttribute("src")).toBe(
+    expect(images[0]?.getAttribute("alt")).toBe("");
+    expect(images[0]?.getAttribute("aria-hidden")).toBe("true");
+    expect(images[1]?.getAttribute("src")).toBe(
       "/api/v1/scans/wl_job/screenshot?tile=1",
     );
   });
 
-  it("updates tile URLs when the job changes", async () => {
-    const { rerender } = render(
+  it("updates tile URLs when the job changes", () => {
+    const { container, rerender } = render(
       <ScreenshotInspector
         jobId="wl_job"
         screenshot={baseScreenshot}
@@ -89,12 +93,12 @@ describe("ScreenshotInspector", () => {
       />,
     );
 
-    expect((await screen.findByAltText("Document tile tile-3")).getAttribute("src")).toBe(
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
       "/api/v1/scans/wl_job_2/screenshot?tile=0",
     );
   });
 
-  it("renders a composed long capture exposed as a single tile", async () => {
+  it("renders a composed long capture with translated labels", () => {
     const composedScreenshot: ScreenshotPayload = {
       ...baseScreenshot,
       strategy: "single",
@@ -111,7 +115,7 @@ describe("ScreenshotInspector", () => {
       ],
     };
 
-    render(
+    const { container } = render(
       <ScreenshotInspector
         jobId="wl_single"
         screenshot={composedScreenshot}
@@ -122,10 +126,11 @@ describe("ScreenshotInspector", () => {
       />,
     );
 
-    expect((await screen.findByAltText("Document tile tile-0")).getAttribute("src")).toBe(
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
       "/api/v1/scans/wl_single/screenshot?tile=0",
     );
-    expect(screen.queryByText("Tiled Capture")).toBeNull();
-    expect(screen.getByText("Full Height")).toBeDefined();
+    expect(screen.queryByText("Captura segmentada")).toBeNull();
+    expect(screen.getByText("Altura completa")).toBeDefined();
+    expect(screen.getByRole("region", { name: /inspector visual/i })).toBeDefined();
   });
 });

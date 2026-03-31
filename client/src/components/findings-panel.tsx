@@ -16,7 +16,7 @@ export function FindingsPanel({ findings }: FindingsPanelProps) {
       <section className="bg-surface-container-low border border-outline-variant/10 rounded-[2rem] p-8 mt-8">
         <div className="flex flex-col items-center justify-center text-center max-w-lg mx-auto py-6">
           <div className="w-16 h-16 bg-success/10 text-success rounded-full flex items-center justify-center mb-6">
-            <CheckCircle2 className="w-8 h-8" />
+            <CheckCircle2 aria-hidden="true" className="w-8 h-8" />
           </div>
           <h2 className="text-2xl font-headline font-bold text-on-surface">
             Carga Optimizada
@@ -48,16 +48,16 @@ export function FindingsPanel({ findings }: FindingsPanelProps) {
       <div className="relative">
         <div className="flex flex-col gap-2 max-w-2xl">
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-primary" />
+            <AlertCircle aria-hidden="true" className="w-4 h-4 text-primary" />
             <p className="text-primary text-[10px] uppercase tracking-widest font-label font-bold">
-              Findings Estratégicos
+              Hallazgos Estratégicos
             </p>
           </div>
           <h2 className="text-3xl font-headline font-bold text-on-surface mt-2">
             Diagnóstico Priorizado
           </h2>
           <p className="text-sm leading-relaxed text-on-surface-variant mt-2">
-            Qué compromete el performance y por qué importa. Priorizado por severidad, 
+            Qué compromete el rendimiento y por qué importa. Priorizado por severidad,
             grado de confianza algorítmico y potencial de ahorro real.
           </p>
         </div>
@@ -80,7 +80,7 @@ export function FindingsPanel({ findings }: FindingsPanelProps) {
                   </span>
                   {finding.estimated_savings_bytes > 0 && (
                     <span className="px-2.5 py-1 rounded-md text-[10px] uppercase tracking-widest font-label font-bold bg-primary/10 text-primary border border-primary/20 ml-auto flex items-center gap-1">
-                      <Zap className="w-3 h-3" />
+                      <Zap aria-hidden="true" className="w-3 h-3" />
                       {formatBytes(finding.estimated_savings_bytes)}
                     </span>
                   )}
@@ -97,12 +97,12 @@ export function FindingsPanel({ findings }: FindingsPanelProps) {
                   <details className="mt-auto pt-6 group">
                     <summary className="text-[10px] tracking-widest uppercase font-label text-on-surface-variant font-semibold cursor-pointer list-none flex items-center justify-between hover:text-primary transition-colors bg-surface-container-low p-2 rounded-lg">
                       <span>Ver Evidencia ({evidence.length})</span>
-                      <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
+                      <ChevronDown aria-hidden="true" className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
                     </summary>
                     <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-on-surface bg-surface-container-low p-5 rounded-2xl border border-outline-variant/5">
                       {evidence.map((item, index) => (
                         <li key={`${finding.id}-${index}`} className="flex items-start gap-2.5">
-                          <ChevronRight className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                          <ChevronRight aria-hidden="true" className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                           <span className="font-medium opacity-90">{item}</span>
                         </li>
                       ))}

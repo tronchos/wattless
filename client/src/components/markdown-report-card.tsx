@@ -52,10 +52,10 @@ export function MarkdownReportCard({
     <section className="bg-surface-container-low rounded-[2rem] p-8 md:p-12 border border-outline-variant/5 mt-8">
       <div className="max-w-3xl mx-auto space-y-8">
         <div className="text-center">
-          <FileText className="w-12 h-12 text-primary mx-auto mb-4 opacity-80" />
-          <h2 className="text-3xl font-bold font-headline text-on-surface">Audit Summary</h2>
+          <FileText aria-hidden="true" className="w-12 h-12 text-primary mx-auto mb-4 opacity-80" />
+          <h2 className="text-3xl font-bold font-headline text-on-surface">Resumen del reporte</h2>
           <p className="text-on-surface-variant mt-2 text-sm">
-            Download your sustainability report in markdown format.
+            Descarga tu reporte de sostenibilidad en formato markdown.
           </p>
         </div>
 
@@ -68,23 +68,23 @@ export function MarkdownReportCard({
         <div className="flex justify-center gap-4">
           <button
             onClick={copyMarkdown}
-            aria-label="Copy report as markdown"
+            aria-label="Copiar reporte en markdown"
             className="bg-surface-container-highest text-on-surface px-8 py-3 rounded-xl font-bold hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm"
           >
             {copyStatus === "copied" ? (
-              <><Check className="w-4 h-4" /> Copied!</>
+              <><Check aria-hidden="true" className="w-4 h-4" /> ¡Copiado!</>
             ) : copyStatus === "error" ? (
-              <><Copy className="w-4 h-4" /> Copy failed</>
+              <><Copy aria-hidden="true" className="w-4 h-4" /> Falló la copia</>
             ) : (
-              <><Copy className="w-4 h-4" /> Copy Markdown</>
+              <><Copy aria-hidden="true" className="w-4 h-4" /> Copiar markdown</>
             )}
           </button>
           <button
             onClick={downloadMarkdown}
-            aria-label="Download report as markdown file"
+            aria-label="Descargar reporte en markdown"
             className="bg-primary text-on-primary px-8 py-3 rounded-xl font-bold hover:bg-primary-dim transition-colors flex items-center gap-2 shadow-lg shadow-primary/10 text-sm"
           >
-            <Download className="w-4 h-4" /> Export MD
+            <Download aria-hidden="true" className="w-4 h-4" /> Exportar MD
           </button>
         </div>
       </div>

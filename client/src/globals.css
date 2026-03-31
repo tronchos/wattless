@@ -126,12 +126,6 @@ h6,
   vertical-align: middle;
 }
 
-.glass-header {
-  background: rgba(13, 15, 12, 0.6);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-}
-
 ::selection {
   background: var(--color-primary);
   color: var(--color-on-primary);
@@ -151,15 +145,6 @@ h6,
   border-radius: 10px;
 }
 
-.app-shell {
-  position: relative;
-}
-
-.panel {
-  background: var(--color-surface-container);
-  border-radius: 1rem;
-}
-
 .bento-grid {
   display: grid;
   gap: 1.5rem;
@@ -167,8 +152,4 @@ h6,
 
 .mono {
   font-family: var(--font-body);
-}
-
-.muted {
-  color: var(--color-on-surface-variant);
 }

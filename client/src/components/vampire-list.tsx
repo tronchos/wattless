@@ -28,7 +28,7 @@ export const VampireList = memo(function VampireList({
 
   return (
     <div className="space-y-6 flex flex-col">
-      <h2 className="text-2xl font-bold font-headline text-on-surface">Dominant Assets</h2>
+      <h2 className="text-2xl font-bold font-headline text-on-surface">Activos Dominantes</h2>
 
       <div className="space-y-3">
         {elements.map((element) => (
@@ -87,7 +87,7 @@ const VampireRow = memo(function VampireRow({
     >
       <button
         type="button"
-        aria-label={`Select asset ${element.url.split("/").pop() || element.type}`}
+        aria-label={`Seleccionar activo ${element.url.split("/").pop() || element.type}`}
         onClick={() => onSelect(element.id)}
         className="w-full px-4 py-3.5 text-left md:px-5"
       >
@@ -156,7 +156,7 @@ function buildBadges(element: VampireElement) {
     badges.push(formatThirdPartyKind(element.third_party_kind));
   }
   if (element.type === "font") {
-    badges.push("Font cost");
+    badges.push("Costo tipográfico");
   }
 
   return badges.filter((badge, index, all) => badge && all.indexOf(badge) === index);
@@ -165,20 +165,20 @@ function buildBadges(element: VampireElement) {
 export function getCoverageState(element: VampireElement, capturedHeight: number) {
   if (!element.bounding_box) {
     return {
-      label: "No visual anchor",
+      label: "Sin anclaje visual",
       className: "bg-surface-container-highest text-on-surface-variant",
     };
   }
 
   if (element.bounding_box.y >= capturedHeight) {
     return {
-      label: "Outside captured range",
+      label: "Fuera del rango capturado",
       className: "bg-secondary-container text-on-surface",
     };
   }
 
   return {
-    label: "Visible in inspector",
+    label: "Visible en el inspector",
     className: "bg-primary/10 text-primary",
   };
 }

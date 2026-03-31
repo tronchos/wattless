@@ -182,6 +182,20 @@ describe("InsightsPanel", () => {
     expect(unanchored.getAttribute("class")).not.toContain("bg-primary/10");
   });
 
+  it("renders the translated section labels", () => {
+    render(
+      <InsightsPanel
+        report={makeReport()}
+        insightsStatus="none"
+        selectedElementID={null}
+        onSelectElement={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("RESUMEN EJECUTIVO")).toBeTruthy();
+    expect(screen.getByText("Acciones prioritarias")).toBeTruthy();
+  });
+
   it("shows AI progress badge while async insights are processing", () => {
     render(
       <InsightsPanel

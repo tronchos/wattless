@@ -1,6 +1,6 @@
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 const mockUseAudit = vi.fn();
 
@@ -201,6 +201,38 @@ describe("ScanWorkbench", () => {
     expect(hasDuplicateKeyWarning(consoleErrorSpy)).toBe(false);
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it("shows the main Spanish product copy when there is no report yet", () => {
+    mockUseAudit.mockReturnValue({
+      inputURL: "",
+      setInputURL: vi.fn(),
+      report: null,
+      previousReport: null,
+      selectedElementID: null,
+      setSelectedElementID: vi.fn(),
+      selectionSignal: 0,
+      selectedElement: null,
+      scanError: null,
+      isScanning: false,
+      scanProgressIndex: 0,
+      handleSubmit: vi.fn(),
+      jobStatus: null,
+      queuePosition: null,
+      estimatedWaitSeconds: null,
+      submittedURL: null,
+      reportJobId: null,
+      conflictingJob: null,
+      insightsStatus: "none",
+      resumeConflictingJob: vi.fn(),
+    });
+
+    render(<ScanWorkbench />);
+
+    expect(screen.getByRole("heading", { name: "Wattless" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Analizar" })).toBeDefined();
+    expect(screen.getByText("En espera")).toBeDefined();
+    expect(screen.getByText("Hallazgos")).toBeDefined();
   });
 });
 

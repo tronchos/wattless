@@ -743,6 +743,25 @@ export function formatRequestStatus(statusCode: number, failed: boolean): string
 }
 
 export function formatResourceLabel(value: string): string {
+  switch (value) {
+    case "document":
+      return "Documento";
+    case "image":
+      return "Imagen";
+    case "script":
+      return "Script";
+    case "font":
+      return "Fuente";
+    case "stylesheet":
+      return "CSS";
+    case "xhr":
+      return "XHR";
+    case "fetch":
+      return "Fetch";
+    default:
+      break;
+  }
+
   return value
     .split("_")
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
@@ -793,11 +812,11 @@ export function formatConfidenceLabel(value: "high" | "medium" | "low"): string 
 export function formatPositionBand(value: string): string {
   switch (value) {
     case "above_fold":
-      return "Above the fold";
+      return "Primer viewport";
     case "near_fold":
-      return "Near fold";
+      return "Cerca del fold";
     case "below_fold":
-      return "Below the fold";
+      return "Debajo del fold";
     case "mixed":
       return "Mixto";
     default:
@@ -810,17 +829,17 @@ export function formatThirdPartyKind(value: string): string {
     case "analytics":
       return "Analytics";
     case "ads":
-      return "Ads";
+      return "Publicidad";
     case "support":
-      return "Support";
+      return "Soporte";
     case "social":
       return "Social";
     case "video_embed":
-      return "Video";
+      return "Video embebido";
     case "payment":
-      return "Payment";
+      return "Pago";
     default:
-      return "Third-party";
+      return "Tercero";
   }
 }
 
@@ -831,15 +850,15 @@ export function formatVisualRole(value: string): string {
     case "hero_media":
       return "Hero";
     case "repeated_card_media":
-      return "Repeated card";
+      return "Media repetida";
     case "above_fold_media":
-      return "Above the fold";
+      return "Media en primer viewport";
     case "below_fold_media":
-      return "Below the fold";
+      return "Media bajo el fold";
     case "decorative":
-      return "Decorative";
+      return "Decorativo";
     default:
-      return "Unknown";
+      return "Desconocido";
   }
 }
 

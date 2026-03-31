@@ -1,4 +1,13 @@
-import { formatBytes, formatGrams, formatMilliseconds } from "@/lib/api";
+import {
+  formatBytes,
+  formatConfidenceLabel,
+  formatGrams,
+  formatMilliseconds,
+  formatPositionBand,
+  formatResourceLabel,
+  formatSeverityLabel,
+  formatVisualRole,
+} from "@/lib/api";
 import type { ScanReport } from "@/lib/types";
 
 const wattlessRepositoryURL = "https://github.com/tronchos/wattless";
@@ -15,20 +24,20 @@ export function createMarkdownReport(
     ? formatMilliseconds(report.performance.fcp_ms)
     : "No capturado";
   const lines = [
-    `# Wattless Report`,
+    `# Reporte Wattless`,
     ``,
     `- Generado con Wattless: ${wattlessAppURL}`,
-    `- Repo: ${wattlessRepositoryURL}`,
+    `- Repositorio: ${wattlessRepositoryURL}`,
     `- URL: ${report.url}`,
-    `- Score: ${report.score}`,
+    `- Puntaje: ${report.score}`,
     `- CO2 por visita: ${formatGrams(report.co2_grams_per_visit)}`,
     `- Transferencia total: ${formatBytes(report.total_bytes_transferred)}`,
     `- LCP: ${lcpValue}`,
     `- FCP: ${fcpValue}`,
     `- Long Tasks: ${formatMilliseconds(report.performance.long_tasks_total_ms)} (${report.performance.long_tasks_count})`,
-    `- Load: ${formatMilliseconds(report.performance.load_ms)}`,
-    `- Inspector coverage: ${formatInspectorCoverage(report)}`,
-    `- Hosting: ${report.hosting_verdict}${report.hosted_by ? ` (${report.hosted_by})` : ""}`,
+    `- Carga completa: ${formatMilliseconds(report.performance.load_ms)}`,
+    `- Cobertura del inspector: ${formatInspectorCoverage(report)}`,
+    `- Hosting: ${formatHostingVerdict(report.hosting_verdict)}${report.hosted_by ? ` (${report.hosted_by})` : ""}`,
     `- Generado: ${report.meta.generated_at}`,
     `- Duración del escaneo: ${formatMilliseconds(report.meta.scan_duration_ms)}`,
     `- Versión del scanner: ${report.meta.scanner_version}`,
@@ -46,30 +55,30 @@ export function createMarkdownReport(
         `${index + 1}. ${action.title} - ${action.reason} (ahorro estimado: ${formatBytes(action.estimated_savings_bytes)})`,
     ),
     ``,
-    `## Findings`,
+    `## Hallazgos`,
     ``,
     ...(report.analysis.findings.length > 0
       ? report.analysis.findings.map(
           (finding) =>
-            `- [${finding.severity}/${finding.confidence}] ${finding.title}: ${finding.summary}`,
+            `- [${formatSeverityLabel(finding.severity)} / ${formatConfidenceLabel(finding.confidence)}] ${finding.title}: ${finding.summary}`,
         )
       : [`- No se detectaron hallazgos prioritarios.`]),
     ``,
-    `## Evidence`,
+    `## Evidencia`,
     ``,
-    `- Above the fold visual bytes: ${formatBytes(report.analysis.summary.above_fold_visual_bytes)}`,
-    `- Below the fold bytes: ${formatBytes(report.analysis.summary.below_fold_bytes)}`,
-    `- LCP resource: ${report.analysis.summary.lcp_resource_url || "Sin match"}${report.analysis.summary.lcp_resource_bytes ? ` (${formatBytes(report.analysis.summary.lcp_resource_bytes)})` : ""}`,
-    `- Analytics bytes: ${formatBytes(report.analysis.summary.analytics_bytes)}`,
-    `- Font bytes: ${formatBytes(report.analysis.summary.font_bytes)}`,
-    `- Render critical bytes: ${formatBytes(report.analysis.summary.render_critical_bytes)}`,
+    `- Peso visual del primer viewport: ${formatBytes(report.analysis.summary.above_fold_visual_bytes)}`,
+    `- Peso por debajo del fold: ${formatBytes(report.analysis.summary.below_fold_bytes)}`,
+    `- Recurso LCP: ${report.analysis.summary.lcp_resource_url || "Sin coincidencia"}${report.analysis.summary.lcp_resource_bytes ? ` (${formatBytes(report.analysis.summary.lcp_resource_bytes)})` : ""}`,
+    `- Bytes de Analytics: ${formatBytes(report.analysis.summary.analytics_bytes)}`,
+    `- Peso tipográfico: ${formatBytes(report.analysis.summary.font_bytes)}`,
+    `- Bytes de render crítico: ${formatBytes(report.analysis.summary.render_critical_bytes)}`,
     ``,
     ...(textualFirstRenderNote ? [`> ${textualFirstRenderNote}`, ``] : []),
     `## Elementos vampiro`,
     ``,
     ...report.vampire_elements.map(
       (element, index) =>
-        `- #${index + 1} ${element.type}: ${element.url} (${formatBytes(element.bytes)}, ${element.visual_role}, ${element.position_band})`,
+        `- #${index + 1} ${formatResourceLabel(element.type)}: ${element.url} (${formatBytes(element.bytes)}, ${formatVisualRole(element.visual_role)}, ${formatPositionBand(element.position_band)})`,
     ),
     ``,
     `## Metodología`,
@@ -91,7 +100,7 @@ export function createMarkdownReport(
       ?.asset_insight.recommended_fix ?? report.insights.top_actions[0]?.recommended_fix;
   if (firstAssetFix) {
     const fix = firstAssetFix;
-    lines.push(`## Wattless Optimization (Sugerencia Automatizada)`, ``);
+    lines.push(`## Optimización sugerida por Wattless`, ``);
     lines.push(fix.summary, ``);
     lines.push(...fix.changes.map((change) => `- ${change}`), ``);
     lines.push("```tsx", fix.optimized_code, "```", ``);
@@ -111,7 +120,18 @@ function formatInspectorCoverage(report: ScanReport): string {
     return `${captured_height} / ${document_height} px`;
   }
 
-  return `${captured_height} / ${document_height} px (truncated)`;
+  return `${captured_height} / ${document_height} px (truncado)`;
+}
+
+function formatHostingVerdict(verdict: ScanReport["hosting_verdict"]): string {
+  switch (verdict) {
+    case "green":
+      return "verde";
+    case "not_green":
+      return "no verde";
+    default:
+      return "desconocido";
+  }
 }
 
 function inferTextualFirstRenderNote(report: ScanReport): string | null {

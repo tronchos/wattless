@@ -15,17 +15,17 @@ export function MethodologyCard({ report }: MethodologyCardProps) {
         Metodología y trazabilidad
       </h2>
       <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
-        Wattless evalúa tres dimensiones: transferencia en red, señales de 
-        laboratorio de CPU (Performance Lab) y findings interpretativos sobre media y DOM.
+        Wattless evalúa tres dimensiones: transferencia en red, señales de
+        laboratorio de rendimiento y CPU, y hallazgos interpretativos sobre media y DOM.
       </p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
-          <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Modelo UI/UX</div>
+          <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Modelo</div>
           <div className="mt-1.5 text-sm font-medium text-on-surface">{report.methodology.model}</div>
         </div>
         <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
-          <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Motor de Escaneo</div>
+          <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Motor de escaneo</div>
           <div className="mt-1.5 text-sm font-medium text-on-surface">{report.methodology.source}</div>
         </div>
       </div>
@@ -51,7 +51,7 @@ export function MethodologyCard({ report }: MethodologyCardProps) {
           </div>
         </div>
         <div className="bg-surface-container rounded-2xl p-4 border border-outline-variant/5">
-          <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Core version</div>
+          <div className="text-on-surface-variant text-[10px] uppercase tracking-widest font-label">Versión del motor</div>
           <div className="mt-1 text-sm font-medium text-on-surface">
             {report.meta.scanner_version}
           </div>
